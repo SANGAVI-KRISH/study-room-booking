@@ -15,7 +15,7 @@ public class StudyRoomImage {
     @Column(columnDefinition = "uuid", updatable = false, nullable = false)
     private UUID id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "room_id", nullable = false)
     @JsonBackReference
     private StudyRoom room;
@@ -35,7 +35,7 @@ public class StudyRoomImage {
     public StudyRoomImage(StudyRoom room, String imageUrl, Integer displayOrder) {
         this.room = room;
         this.imageUrl = imageUrl;
-        this.displayOrder = displayOrder;
+        this.displayOrder = displayOrder != null ? displayOrder : 0;
     }
 
     public UUID getId() {
@@ -67,7 +67,7 @@ public class StudyRoomImage {
     }
 
     public void setDisplayOrder(Integer displayOrder) {
-        this.displayOrder = displayOrder;
+        this.displayOrder = displayOrder != null ? displayOrder : 0;
     }
 
     public OffsetDateTime getCreatedAt() {
@@ -76,6 +76,13 @@ public class StudyRoomImage {
 
     public void setCreatedAt(OffsetDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+
+    @PrePersist
+    public void prePersist() {
+        if (displayOrder == null) {
+            displayOrder = 0;
+        }
     }
 
     @Override

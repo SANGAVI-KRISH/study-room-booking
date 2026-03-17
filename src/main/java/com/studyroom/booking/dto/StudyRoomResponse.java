@@ -18,7 +18,7 @@ public class StudyRoomResponse {
     private String district;
     private String location;
     private BigDecimal feePerHour;
-    private Boolean approvalRequired;
+    private Boolean approvalRequired = false;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
     private List<ImageResponse> images = new ArrayList<>();
@@ -135,7 +135,7 @@ public class StudyRoomResponse {
     }
 
     public void setImages(List<ImageResponse> images) {
-        this.images = images;
+        this.images = (images != null) ? images : new ArrayList<>();
     }
 
     public static class ImageResponse {

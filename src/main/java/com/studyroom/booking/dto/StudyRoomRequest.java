@@ -15,11 +15,17 @@ public class StudyRoomRequest {
     private String district;
     private String location;
     private BigDecimal feePerHour;
-    private Boolean approvalRequired;
+
+    // default false if not provided
+    private Boolean approvalRequired = false;
+
+    // Multiple images upload
     private MultipartFile[] images;
 
     public StudyRoomRequest() {
     }
+
+    // Getters and Setters
 
     public String getBlockName() {
         return blockName;

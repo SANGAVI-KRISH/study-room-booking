@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+const API_BASE_URL = "http://localhost:8080";
+
 export default function ManageStudyRooms() {
   const navigate = useNavigate();
 
@@ -45,8 +47,7 @@ export default function ManageStudyRooms() {
     "Virudhunagar",
   ];
 
-  const [rooms, setRooms] = useState([]);
-  const [form, setForm] = useState({
+  const emptyForm = {
     blockName: "",
     roomNumber: "",
     floorNumber: "",
@@ -56,7 +57,12 @@ export default function ManageStudyRooms() {
     district: "",
     location: "",
     feePerHour: "",
-  });
+    approvalRequired: false,
+  };
+
+  const [rooms, setRooms] = useState([]);
+  const [form, setForm] = useState(emptyForm);
+  const [editingRoomId, setEditingRoomId] = useState(null);
 
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [localPreviewUrls, setLocalPreviewUrls] = useState([]);
@@ -124,7 +130,7 @@ export default function ManageStudyRooms() {
 
       try {
         const data = JSON.parse(text);
-        return data.message || data.error || fallbackMessage;
+        return data.message || data.error || text || fallbackMessage;
       } catch {
         return text;
       }
@@ -133,12 +139,18 @@ export default function ManageStudyRooms() {
     }
   };
 
+  const toAbsoluteImageUrl = (url) => {
+    if (!url) return "";
+    if (url.startsWith("http://") || url.startsWith("https://")) return url;
+    return `${API_BASE_URL}${url}`;
+  };
+
   const fetchRooms = async () => {
     try {
       setLoading(true);
       setError("");
 
-      const res = await fetch("http://localhost:8080/api/rooms", {
+      const res = await fetch(`${API_BASE_URL}/api/rooms`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -158,9 +170,11 @@ export default function ManageStudyRooms() {
   };
 
   const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+
     setForm((prev) => ({
       ...prev,
-      [e.target.name]: e.target.value,
+      [name]: type === "checkbox" ? checked : value,
     }));
   };
 
@@ -170,26 +184,13 @@ export default function ManageStudyRooms() {
   };
 
   const resetForm = () => {
-    setForm({
-      blockName: "",
-      roomNumber: "",
-      floorNumber: "",
-      seatingCapacity: "",
-      availabilityTimings: "",
-      facilities: "",
-      district: "",
-      location: "",
-      feePerHour: "",
-    });
+    setForm(emptyForm);
+    setEditingRoomId(null);
     setSelectedFiles([]);
     setLocalPreviewUrls([]);
   };
 
-  const handleAddRoom = async (e) => {
-    e.preventDefault();
-    setMessage("");
-    setError("");
-
+  const validateForm = () => {
     if (
       !form.blockName.trim() ||
       !form.roomNumber.trim() ||
@@ -199,68 +200,129 @@ export default function ManageStudyRooms() {
       !form.facilities.trim() ||
       !form.district.trim() ||
       !form.location.trim() ||
-      !form.feePerHour
+      form.feePerHour === ""
     ) {
-      setError("Please fill all fields including fee per hour.");
-      return;
+      return "Please fill all fields including fee per hour.";
     }
 
     if (Number(form.seatingCapacity) <= 0) {
-      setError("Seating capacity must be greater than 0.");
-      return;
+      return "Seating capacity must be greater than 0.";
     }
 
     if (Number(form.feePerHour) < 0) {
-      setError("Fee per hour cannot be negative.");
+      return "Fee per hour cannot be negative.";
+    }
+
+    return null;
+  };
+
+  const buildFormData = () => {
+    const formData = new FormData();
+
+    formData.append("blockName", form.blockName.trim());
+    formData.append("roomNumber", form.roomNumber.trim());
+    formData.append("floorNumber", form.floorNumber.trim());
+    formData.append("seatingCapacity", String(Number(form.seatingCapacity)));
+    formData.append("availabilityTimings", form.availabilityTimings.trim());
+    formData.append("facilities", form.facilities.trim());
+    formData.append("district", form.district.trim());
+    formData.append("location", form.location.trim());
+    formData.append("feePerHour", String(Number(form.feePerHour)));
+    formData.append("approvalRequired", String(Boolean(form.approvalRequired)));
+
+    selectedFiles.forEach((file) => {
+      formData.append("images", file);
+    });
+
+    return formData;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setMessage("");
+    setError("");
+
+    const validationError = validateForm();
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
     try {
       setSubmitting(true);
 
-      const payload = {
-        ...form,
-        seatingCapacity: Number(form.seatingCapacity),
-        feePerHour: Number(form.feePerHour),
-      };
+      const formData = buildFormData();
+      const isEditMode = Boolean(editingRoomId);
 
-      const res = await fetch("http://localhost:8080/api/rooms", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
+      const res = await fetch(
+        isEditMode
+          ? `${API_BASE_URL}/api/rooms/${editingRoomId}`
+          : `${API_BASE_URL}/api/rooms`,
+        {
+          method: isEditMode ? "PUT" : "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
+        }
+      );
 
       if (!res.ok) {
-        throw new Error(await getErrorMessage(res, "Failed to add room"));
+        throw new Error(
+          await getErrorMessage(
+            res,
+            isEditMode ? "Failed to update room" : "Failed to add room"
+          )
+        );
       }
 
       const savedRoom = await res.json();
 
-      const roomWithLocalImages =
-        localPreviewUrls.length > 0
-          ? {
-              ...savedRoom,
-              imageUrls: localPreviewUrls,
-            }
-          : savedRoom;
-
-      setRooms((prev) => [roomWithLocalImages, ...prev]);
-
-      setMessage(
-        selectedFiles.length > 0
-          ? "Room added successfully. Gallery preview is ready. Permanent image saving needs backend image upload support."
-          : "Room added successfully."
-      );
+      if (isEditMode) {
+        setRooms((prev) =>
+          prev.map((room) => (room.id === editingRoomId ? savedRoom : room))
+        );
+        setMessage("Room updated successfully.");
+      } else {
+        setRooms((prev) => [savedRoom, ...prev]);
+        setMessage("Room added successfully.");
+      }
 
       resetForm();
     } catch (err) {
-      setError(err.message || "Error adding room");
+      setError(err.message || "Something went wrong");
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleEdit = (room) => {
+    setMessage("");
+    setError("");
+    setEditingRoomId(room.id);
+
+    setForm({
+      blockName: room.blockName || "",
+      roomNumber: room.roomNumber || "",
+      floorNumber: room.floorNumber || "",
+      seatingCapacity: room.seatingCapacity ?? "",
+      availabilityTimings: room.availabilityTimings || "",
+      facilities: room.facilities || "",
+      district: room.district || "",
+      location: room.location || "",
+      feePerHour: room.feePerHour ?? "",
+      approvalRequired: Boolean(room.approvalRequired),
+    });
+
+    setSelectedFiles([]);
+    setLocalPreviewUrls([]);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleCancelEdit = () => {
+    resetForm();
+    setMessage("Edit cancelled.");
+    setError("");
   };
 
   const handleDelete = async (id) => {
@@ -270,7 +332,7 @@ export default function ManageStudyRooms() {
       setMessage("");
       setError("");
 
-      const res = await fetch(`http://localhost:8080/api/rooms/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/rooms/${id}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -281,8 +343,13 @@ export default function ManageStudyRooms() {
         throw new Error(await getErrorMessage(res, "Failed to delete room"));
       }
 
-      setMessage("Room deleted successfully.");
       setRooms((prev) => prev.filter((room) => room.id !== id));
+
+      if (editingRoomId === id) {
+        resetForm();
+      }
+
+      setMessage("Room deleted successfully.");
     } catch (err) {
       setError(err.message || "Error deleting room");
     }
@@ -291,30 +358,30 @@ export default function ManageStudyRooms() {
   const extractRoomImages = (room) => {
     if (!room) return [];
 
-    if (Array.isArray(room.imageUrls)) {
-      return room.imageUrls.filter(Boolean);
-    }
-
     if (Array.isArray(room.images)) {
       return room.images
         .map((img) => {
-          if (typeof img === "string") return img;
-          return img?.imageUrl || img?.url || img?.path || "";
+          if (typeof img === "string") return toAbsoluteImageUrl(img);
+          return toAbsoluteImageUrl(img?.imageUrl || img?.url || img?.path || "");
         })
         .filter(Boolean);
+    }
+
+    if (Array.isArray(room.imageUrls)) {
+      return room.imageUrls.map(toAbsoluteImageUrl).filter(Boolean);
     }
 
     if (Array.isArray(room.roomImages)) {
       return room.roomImages
         .map((img) => {
-          if (typeof img === "string") return img;
-          return img?.imageUrl || img?.url || img?.path || "";
+          if (typeof img === "string") return toAbsoluteImageUrl(img);
+          return toAbsoluteImageUrl(img?.imageUrl || img?.url || img?.path || "");
         })
         .filter(Boolean);
     }
 
-    if (room.imageUrl) return [room.imageUrl];
-    if (room.thumbnailUrl) return [room.thumbnailUrl];
+    if (room.imageUrl) return [toAbsoluteImageUrl(room.imageUrl)];
+    if (room.thumbnailUrl) return [toAbsoluteImageUrl(room.thumbnailUrl)];
 
     return [];
   };
@@ -419,7 +486,7 @@ export default function ManageStudyRooms() {
           <div>
             <h1 style={styles.heading}>Manage Study Rooms</h1>
             <p style={styles.subText}>
-              Add, view and manage all available study rooms.
+              Add, edit, view and manage all available study rooms.
             </p>
           </div>
 
@@ -431,11 +498,15 @@ export default function ManageStudyRooms() {
         {message && <div style={styles.successBox}>{message}</div>}
         {error && <div style={styles.errorBox}>{error}</div>}
 
-        <form onSubmit={handleAddRoom} style={styles.formCard}>
+        <form onSubmit={handleSubmit} style={styles.formCard}>
           <div style={styles.formHeader}>
-            <h2 style={styles.formTitle}>Add New Study Room</h2>
+            <h2 style={styles.formTitle}>
+              {editingRoomId ? "Update Study Room" : "Add New Study Room"}
+            </h2>
             <p style={styles.formSubtitle}>
-              Fill in the room details carefully.
+              {editingRoomId
+                ? "Modify room details and save changes."
+                : "Fill in the room details carefully."}
             </p>
           </div>
 
@@ -551,8 +622,24 @@ export default function ManageStudyRooms() {
               />
             </div>
 
+            <div style={styles.fieldGroup}>
+              <label style={styles.checkboxLabel}>
+                <input
+                  type="checkbox"
+                  name="approvalRequired"
+                  checked={form.approvalRequired}
+                  onChange={handleChange}
+                />
+                <span>Approval Required</span>
+              </label>
+            </div>
+
             <div style={{ ...styles.fieldGroup, gridColumn: "1 / -1" }}>
-              <label style={styles.label}>Study Room Images</label>
+              <label style={styles.label}>
+                {editingRoomId
+                  ? "Replace Study Room Images"
+                  : "Study Room Images"}
+              </label>
               <div style={styles.uploadBox}>
                 <input
                   type="file"
@@ -561,7 +648,11 @@ export default function ManageStudyRooms() {
                   onChange={handleImageChange}
                   style={styles.fileInput}
                 />
-                <p style={styles.uploadHint}>{previewCountText}</p>
+                <p style={styles.uploadHint}>
+                  {editingRoomId
+                    ? `${previewCountText}. If you select images during update, old images will be replaced.`
+                    : previewCountText}
+                </p>
               </div>
             </div>
 
@@ -582,17 +673,35 @@ export default function ManageStudyRooms() {
             )}
           </div>
 
-          <button
-            type="submit"
-            style={{
-              ...styles.addButton,
-              opacity: submitting ? 0.75 : 1,
-              cursor: submitting ? "not-allowed" : "pointer",
-            }}
-            disabled={submitting}
-          >
-            {submitting ? "Adding Room..." : "Add Room"}
-          </button>
+          <div style={styles.actionRow}>
+            <button
+              type="submit"
+              style={{
+                ...styles.addButton,
+                opacity: submitting ? 0.75 : 1,
+                cursor: submitting ? "not-allowed" : "pointer",
+              }}
+              disabled={submitting}
+            >
+              {submitting
+                ? editingRoomId
+                  ? "Updating Room..."
+                  : "Adding Room..."
+                : editingRoomId
+                ? "Update Room"
+                : "Add Room"}
+            </button>
+
+            {editingRoomId && (
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                style={styles.cancelButton}
+              >
+                Cancel Edit
+              </button>
+            )}
+          </div>
         </form>
 
         <div style={styles.listHeader}>
@@ -648,22 +757,26 @@ export default function ManageStudyRooms() {
 
                   <div style={styles.infoList}>
                     <p>
-                      <strong>Floor:</strong> {room.floorNumber}
+                      <strong>Floor:</strong> {room.floorNumber || "-"}
                     </p>
                     <p>
-                      <strong>Capacity:</strong> {room.seatingCapacity}
+                      <strong>Capacity:</strong> {room.seatingCapacity || "-"}
                     </p>
                     <p>
-                      <strong>Availability:</strong> {room.availabilityTimings}
+                      <strong>Availability:</strong> {room.availabilityTimings || "-"}
                     </p>
                     <p>
-                      <strong>District:</strong> {room.district}
+                      <strong>District:</strong> {room.district || "-"}
                     </p>
                     <p>
-                      <strong>Location:</strong> {room.location}
+                      <strong>Location:</strong> {room.location || "-"}
                     </p>
                     <p>
-                      <strong>Facilities:</strong> {room.facilities}
+                      <strong>Facilities:</strong> {room.facilities || "-"}
+                    </p>
+                    <p>
+                      <strong>Approval Required:</strong>{" "}
+                      {room.approvalRequired ? "Yes" : "No"}
                     </p>
                   </div>
 
@@ -679,6 +792,14 @@ export default function ManageStudyRooms() {
                       disabled={images.length === 0}
                     >
                       View Images
+                    </button>
+
+                    <button
+                      type="button"
+                      style={styles.editButton}
+                      onClick={() => handleEdit(room)}
+                    >
+                      Edit
                     </button>
 
                     <button
@@ -907,6 +1028,15 @@ const styles = {
     fontWeight: 700,
     color: "#334155",
   },
+  checkboxLabel: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    fontSize: "14px",
+    fontWeight: 700,
+    color: "#334155",
+    marginTop: "28px",
+  },
   input: {
     height: "50px",
     borderRadius: "12px",
@@ -973,9 +1103,15 @@ const styles = {
     borderRadius: "12px",
     border: "1px solid #cbd5e1",
   },
-  addButton: {
+  actionRow: {
+    display: "flex",
+    gap: "12px",
+    flexWrap: "wrap",
     marginTop: "22px",
-    width: "100%",
+  },
+  addButton: {
+    flex: 1,
+    minWidth: "180px",
     height: "54px",
     border: "none",
     borderRadius: "14px",
@@ -984,6 +1120,17 @@ const styles = {
     fontSize: "17px",
     fontWeight: 700,
     boxShadow: "0 10px 22px rgba(37,99,235,0.22)",
+  },
+  cancelButton: {
+    minWidth: "150px",
+    height: "54px",
+    border: "1px solid #cbd5e1",
+    borderRadius: "14px",
+    background: "#fff",
+    color: "#0f172a",
+    fontSize: "15px",
+    fontWeight: 700,
+    cursor: "pointer",
   },
   listHeader: {
     display: "flex",
@@ -1097,9 +1244,11 @@ const styles = {
   cardButtons: {
     display: "flex",
     gap: "12px",
+    flexWrap: "wrap",
   },
   viewButton: {
     flex: 1,
+    minWidth: "90px",
     height: "46px",
     backgroundColor: "#16a34a",
     color: "#fff",
@@ -1107,9 +1256,23 @@ const styles = {
     borderRadius: "12px",
     fontWeight: 700,
     fontSize: "14px",
+    cursor: "pointer",
+  },
+  editButton: {
+    flex: 1,
+    minWidth: "90px",
+    height: "46px",
+    backgroundColor: "#f59e0b",
+    color: "#fff",
+    border: "none",
+    borderRadius: "12px",
+    fontWeight: 700,
+    fontSize: "14px",
+    cursor: "pointer",
   },
   deleteButton: {
     flex: 1,
+    minWidth: "90px",
     height: "46px",
     backgroundColor: "#dc2626",
     color: "#fff",

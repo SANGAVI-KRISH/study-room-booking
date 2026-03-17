@@ -48,10 +48,10 @@ public class StudyRoom {
     @Column(name = "approval_required", nullable = false)
     private boolean approvalRequired = false;
 
-    @Column(name = "created_at")
+    @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
-    @Column(name = "updated_at")
+    @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 
     @OneToMany(mappedBy = "room", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
@@ -86,8 +86,9 @@ public class StudyRoom {
 
     @PrePersist
     protected void onCreate() {
-        this.createdAt = OffsetDateTime.now();
-        this.updatedAt = OffsetDateTime.now();
+        OffsetDateTime now = OffsetDateTime.now();
+        this.createdAt = now;
+        this.updatedAt = now;
     }
 
     @PreUpdate
@@ -97,15 +98,27 @@ public class StudyRoom {
 
     public void addImage(StudyRoomImage image) {
         if (image != null) {
-            images.add(image);
+            if (this.images == null) {
+                this.images = new ArrayList<>();
+            }
+            this.images.add(image);
             image.setRoom(this);
         }
     }
 
     public void removeImage(StudyRoomImage image) {
-        if (image != null) {
-            images.remove(image);
+        if (image != null && this.images != null) {
+            this.images.remove(image);
             image.setRoom(null);
+        }
+    }
+
+    public void clearImages() {
+        if (this.images != null) {
+            for (StudyRoomImage image : this.images) {
+                image.setRoom(null);
+            }
+            this.images.clear();
         }
     }
 
@@ -113,112 +126,112 @@ public class StudyRoom {
         return id;
     }
 
-    public String getBlockName() {
-        return blockName;
-    }
-
-    public String getRoomNumber() {
-        return roomNumber;
-    }
-
-    public String getFloorNumber() {
-        return floorNumber;
-    }
-
-    public Integer getSeatingCapacity() {
-        return seatingCapacity;
-    }
-
-    public String getAvailabilityTimings() {
-        return availabilityTimings;
-    }
-
-    public String getFacilities() {
-        return facilities;
-    }
-
-    public String getDistrict() {
-        return district;
-    }
-
-    public String getLocation() {
-        return location;
-    }
-
-    public BigDecimal getFeePerHour() {
-        return feePerHour;
-    }
-
-    public boolean isApprovalRequired() {
-        return approvalRequired;
-    }
-
-    public OffsetDateTime getCreatedAt() {
-        return createdAt;
-    }
-
-    public OffsetDateTime getUpdatedAt() {
-        return updatedAt;
-    }
-
-    public List<StudyRoomImage> getImages() {
-        return images;
-    }
-
     public void setId(UUID id) {
         this.id = id;
+    }
+
+    public String getBlockName() {
+        return blockName;
     }
 
     public void setBlockName(String blockName) {
         this.blockName = blockName;
     }
 
+    public String getRoomNumber() {
+        return roomNumber;
+    }
+
     public void setRoomNumber(String roomNumber) {
         this.roomNumber = roomNumber;
+    }
+
+    public String getFloorNumber() {
+        return floorNumber;
     }
 
     public void setFloorNumber(String floorNumber) {
         this.floorNumber = floorNumber;
     }
 
+    public Integer getSeatingCapacity() {
+        return seatingCapacity;
+    }
+
     public void setSeatingCapacity(Integer seatingCapacity) {
         this.seatingCapacity = seatingCapacity;
+    }
+
+    public String getAvailabilityTimings() {
+        return availabilityTimings;
     }
 
     public void setAvailabilityTimings(String availabilityTimings) {
         this.availabilityTimings = availabilityTimings;
     }
 
+    public String getFacilities() {
+        return facilities;
+    }
+
     public void setFacilities(String facilities) {
         this.facilities = facilities;
+    }
+
+    public String getDistrict() {
+        return district;
     }
 
     public void setDistrict(String district) {
         this.district = district;
     }
 
+    public String getLocation() {
+        return location;
+    }
+
     public void setLocation(String location) {
         this.location = location;
+    }
+
+    public BigDecimal getFeePerHour() {
+        return feePerHour;
     }
 
     public void setFeePerHour(BigDecimal feePerHour) {
         this.feePerHour = feePerHour;
     }
 
+    public boolean isApprovalRequired() {
+        return approvalRequired;
+    }
+
     public void setApprovalRequired(boolean approvalRequired) {
         this.approvalRequired = approvalRequired;
+    }
+
+    public OffsetDateTime getCreatedAt() {
+        return createdAt;
     }
 
     public void setCreatedAt(OffsetDateTime createdAt) {
         this.createdAt = createdAt;
     }
 
+    public OffsetDateTime getUpdatedAt() {
+        return updatedAt;
+    }
+
     public void setUpdatedAt(OffsetDateTime updatedAt) {
         this.updatedAt = updatedAt;
     }
 
+    public List<StudyRoomImage> getImages() {
+        return images;
+    }
+
     public void setImages(List<StudyRoomImage> images) {
-        this.images.clear();
+        clearImages();
         if (images != null) {
             for (StudyRoomImage image : images) {
                 addImage(image);
