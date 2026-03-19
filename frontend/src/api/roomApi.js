@@ -1,6 +1,7 @@
 const ROOM_BASE_URL = "http://localhost:8080/api/rooms";
 const BOOKING_BASE_URL = "http://localhost:8080/api/bookings";
 const ADMIN_DASHBOARD_BASE_URL = "http://localhost:8080/api/admin/dashboard";
+const REPORT_BASE_URL = "http://localhost:8080/api/reports";
 
 function getToken() {
   const token = localStorage.getItem("token");
@@ -662,4 +663,87 @@ export async function getAdminDashboardStats() {
   });
 
   return handleResponse(response, "Failed to fetch admin dashboard stats");
+}
+
+/* ---------------- REPORT APIs ---------------- */
+
+export async function getDailyBookingReport() {
+  const response = await fetch(`${REPORT_BASE_URL}/daily`, {
+    method: "GET",
+    headers: getAuthHeaders(false),
+  });
+
+  return handleResponse(response, "Failed to fetch daily booking report");
+}
+
+export async function getWeeklyBookingReport() {
+  const response = await fetch(`${REPORT_BASE_URL}/weekly`, {
+    method: "GET",
+    headers: getAuthHeaders(false),
+  });
+
+  return handleResponse(response, "Failed to fetch weekly booking report");
+}
+
+export async function getMonthlyBookingReport() {
+  const response = await fetch(`${REPORT_BASE_URL}/monthly`, {
+    method: "GET",
+    headers: getAuthHeaders(false),
+  });
+
+  return handleResponse(response, "Failed to fetch monthly booking report");
+}
+
+export async function getRoomUtilizationReport() {
+  const response = await fetch(`${REPORT_BASE_URL}/room-utilization`, {
+    method: "GET",
+    headers: getAuthHeaders(false),
+  });
+
+  return handleResponse(response, "Failed to fetch room utilization report");
+}
+
+export async function getFrequentlyUsedRoomsReport() {
+  const response = await fetch(`${REPORT_BASE_URL}/frequently-used-rooms`, {
+    method: "GET",
+    headers: getAuthHeaders(false),
+  });
+
+  return handleResponse(response, "Failed to fetch frequently used rooms report");
+}
+
+export async function getCancellationAnalysisReport() {
+  const response = await fetch(`${REPORT_BASE_URL}/cancellation-analysis`, {
+    method: "GET",
+    headers: getAuthHeaders(false),
+  });
+
+  return handleResponse(response, "Failed to fetch cancellation analysis report");
+}
+
+export async function getUserActivityReport() {
+  const response = await fetch(`${REPORT_BASE_URL}/user-activity`, {
+    method: "GET",
+    headers: getAuthHeaders(false),
+  });
+
+  return handleResponse(response, "Failed to fetch user activity report");
+}
+
+export async function getRoomUsageTrendReport() {
+  const response = await fetch(`${REPORT_BASE_URL}/room-usage-trend`, {
+    method: "GET",
+    headers: getAuthHeaders(false),
+  });
+
+  return handleResponse(response, "Failed to fetch room usage trend report");
+}
+
+export async function getPeakBookingHoursReport() {
+  const response = await fetch(`${REPORT_BASE_URL}/peak-booking-hours`, {
+    method: "GET",
+    headers: getAuthHeaders(false),
+  });
+
+  return handleResponse(response, "Failed to fetch peak booking hours report");
 }

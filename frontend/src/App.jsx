@@ -18,6 +18,7 @@ import BookingHistory from "./pages/BookingHistory";
 import Notifications from "./pages/Notifications";
 import MyBookings from "./pages/MyBookings";
 import AdminBookingApproval from "./pages/AdminBookingApproval";
+import AdminReports from "./pages/AdminReports";
 
 const API_BASE_URL = "http://localhost:8080";
 
@@ -579,7 +580,8 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-
+        <Route path="/admin/reports" element={<AdminReports />} />
+        <Route path="/admin/reports" element={<AdminReports />} />
         <Route
           path="/student"
           element={

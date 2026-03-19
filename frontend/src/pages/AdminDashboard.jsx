@@ -90,7 +90,6 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Dashboard Statistics Section */}
       <div style={styles.section}>
         <div style={styles.sectionHeader}>
           <h2 style={styles.sectionTitle}>System Overview</h2>
@@ -176,7 +175,6 @@ export default function AdminDashboard() {
         )}
       </div>
 
-      {/* Existing Navigation Cards */}
       <div style={styles.cardContainer}>
         <div style={styles.card}>
           <h3 style={styles.cardTitle}>Manage Study Rooms</h3>
@@ -240,7 +238,12 @@ export default function AdminDashboard() {
           <p style={styles.cardText}>
             Check room usage reports and booking statistics.
           </p>
-          <button style={styles.disabledButton}>Coming Soon</button>
+          <button
+            style={styles.buttonAsButton}
+            onClick={() => navigate("/admin/reports")}
+          >
+            View Reports
+          </button>
         </div>
       </div>
 

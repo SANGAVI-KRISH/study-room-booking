@@ -81,7 +81,7 @@ public class AdminDashboardService {
     }
 
     private List<RoomUsageTrendDto> getRoomUsageTrends() {
-        List<Object[]> results = bookingRepository.findRoomUsageTrends();
+        List<Object[]> results = bookingRepository.findRoomUsageTrend();
         List<RoomUsageTrendDto> trends = new ArrayList<>();
 
         for (Object[] row : results) {

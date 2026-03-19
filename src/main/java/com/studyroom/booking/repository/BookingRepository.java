@@ -145,9 +145,20 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
     long countByStatusIn(List<BookingStatus> statuses);
 
+    long countByStartAtBetween(OffsetDateTime start, OffsetDateTime end);
+
+    long countByStatusAndStartAtBetween(BookingStatus status, OffsetDateTime start, OffsetDateTime end);
+
+    long countByStatusInAndStartAtBetween(
+            List<BookingStatus> statuses,
+            OffsetDateTime start,
+            OffsetDateTime end
+    );
+
     @Query("""
         SELECT CONCAT(b.room.blockName, ' - ', b.room.roomNumber), COUNT(b)
         FROM Booking b
+        WHERE b.status IN ('APPROVED', 'COMPLETED')
         GROUP BY b.room.blockName, b.room.roomNumber
         ORDER BY COUNT(b) DESC
     """)
@@ -164,8 +175,45 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     @Query("""
         SELECT CONCAT(b.room.blockName, ' - ', b.room.roomNumber), COUNT(b)
         FROM Booking b
+        WHERE b.status IN ('APPROVED', 'COMPLETED')
         GROUP BY b.room.blockName, b.room.roomNumber
         ORDER BY COUNT(b) DESC
     """)
-    List<Object[]> findRoomUsageTrends();
+    List<Object[]> findFrequentlyUsedRooms();
+
+    @Query("""
+        SELECT CONCAT(b.room.blockName, ' - ', b.room.roomNumber),
+               COUNT(b),
+               SUM(function('TIMESTAMPDIFF', HOUR, b.startAt, b.endAt))
+        FROM Booking b
+        WHERE b.status IN ('APPROVED', 'COMPLETED')
+        GROUP BY b.room.blockName, b.room.roomNumber
+        ORDER BY COUNT(b) DESC
+    """)
+    List<Object[]> findRoomUtilizationReport();
+
+    @Query("""
+        SELECT b.user.name, b.user.email, COUNT(b)
+        FROM Booking b
+        GROUP BY b.user.name, b.user.email
+        ORDER BY COUNT(b) DESC
+    """)
+    List<Object[]> findUserActivityReport();
+
+    @Query("""
+        SELECT DATE(b.startAt), COUNT(b)
+        FROM Booking b
+        WHERE b.status IN ('APPROVED', 'COMPLETED')
+        GROUP BY DATE(b.startAt)
+        ORDER BY DATE(b.startAt)
+    """)
+    List<Object[]> findRoomUsageTrend();
+
+    @Query("""
+        SELECT b.status, COUNT(b)
+        FROM Booking b
+        WHERE b.status IN ('CANCELLED', 'AUTO_CANCELLED')
+        GROUP BY b.status
+    """)
+    List<Object[]> findCancellationAnalysis();
 }
