@@ -1,64 +1,80 @@
 package com.studyroom.booking.dto;
 
-import java.time.LocalDate;
-import java.time.LocalTime;
+import jakarta.validation.constraints.Future;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+
+import java.time.OffsetDateTime;
+import java.util.UUID;
 
 public class BookingRequest {
 
-    private Long roomId;
-    private Long userId;
-    private LocalDate bookingDate;
-    private LocalTime startTime;
-    private LocalTime endTime;
+    @NotNull(message = "Room ID is required")
+    private UUID roomId;
+
+    @NotNull(message = "User ID is required")
+    private UUID userId;
+
+    @NotNull(message = "Start date and time is required")
+    @Future(message = "Start time must be in the future")
+    private OffsetDateTime startAt;
+
+    @NotNull(message = "End date and time is required")
+    private OffsetDateTime endAt;
+
+    private String purpose;
+
+    @Positive(message = "Attendee count must be greater than 0")
+    private Integer attendeeCount;
 
     public BookingRequest() {
     }
 
-    public BookingRequest(Long roomId, Long userId, LocalDate bookingDate, LocalTime startTime, LocalTime endTime) {
-        this.roomId = roomId;
-        this.userId = userId;
-        this.bookingDate = bookingDate;
-        this.startTime = startTime;
-        this.endTime = endTime;
-    }
-
-    public Long getRoomId() {
+    public UUID getRoomId() {
         return roomId;
     }
 
-    public void setRoomId(Long roomId) {
+    public void setRoomId(UUID roomId) {
         this.roomId = roomId;
     }
 
-    public Long getUserId() {
+    public UUID getUserId() {
         return userId;
     }
 
-    public void setUserId(Long userId) {
+    public void setUserId(UUID userId) {
         this.userId = userId;
     }
 
-    public LocalDate getBookingDate() {
-        return bookingDate;
+    public OffsetDateTime getStartAt() {
+        return startAt;
     }
 
-    public void setBookingDate(LocalDate bookingDate) {
-        this.bookingDate = bookingDate;
+    public void setStartAt(OffsetDateTime startAt) {
+        this.startAt = startAt;
     }
 
-    public LocalTime getStartTime() {
-        return startTime;
+    public OffsetDateTime getEndAt() {
+        return endAt;
     }
 
-    public void setStartTime(LocalTime startTime) {
-        this.startTime = startTime;
+    public void setEndAt(OffsetDateTime endAt) {
+        this.endAt = endAt;
     }
 
-    public LocalTime getEndTime() {
-        return endTime;
+    public String getPurpose() {
+        return purpose;
     }
 
-    public void setEndTime(LocalTime endTime) {
-        this.endTime = endTime;
+    public void setPurpose(String purpose) {
+        this.purpose = purpose;
+    }
+
+    public Integer getAttendeeCount() {
+        return attendeeCount;
+    }
+
+    public void setAttendeeCount(Integer attendeeCount) {
+        this.attendeeCount = attendeeCount;
     }
 }

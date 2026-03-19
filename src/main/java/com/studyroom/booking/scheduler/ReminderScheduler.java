@@ -2,15 +2,13 @@ package com.studyroom.booking.scheduler;
 
 import com.studyroom.booking.model.Booking;
 import com.studyroom.booking.model.BookingStatus;
-import com.studyroom.booking.model.NotificationType;
 import com.studyroom.booking.repository.BookingRepository;
 import com.studyroom.booking.service.NotificationService;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.List;
 
 @Component
@@ -18,6 +16,8 @@ public class ReminderScheduler {
 
     private final BookingRepository bookingRepository;
     private final NotificationService notificationService;
+
+    private static final ZoneId APP_ZONE = ZoneId.of("Asia/Kolkata");
 
     public ReminderScheduler(BookingRepository bookingRepository,
                              NotificationService notificationService) {
@@ -27,27 +27,25 @@ public class ReminderScheduler {
 
     @Scheduled(fixedRate = 60000)
     public void sendBookingReminders() {
-        LocalDate today = LocalDate.now();
-        LocalTime now = LocalTime.now();
-        LocalTime next30Minutes = now.plusMinutes(30);
+        OffsetDateTime now = OffsetDateTime.now(APP_ZONE);
+        OffsetDateTime next30Minutes = now.plusMinutes(30);
 
-        List<Booking> todayBookings = bookingRepository.findByBookingDateAndStatus(today, BookingStatus.APPROVED);
-
-        for (Booking booking : todayBookings) {
-            if (booking.getStartTime().isAfter(now) && booking.getStartTime().isBefore(next30Minutes)) {
-                String title = "Booking Reminder";
-                String message = notificationService.buildBookingMessage(
-                        "Reminder: Your booking will start soon.",
-                        booking
+        List<Booking> upcomingBookings =
+                bookingRepository.findByStatusAndStartAtBetween(
+                        BookingStatus.APPROVED,
+                        now,
+                        next30Minutes
                 );
 
-                notificationService.sendInAppAndEmail(
-                        booking.getUser(),
-                        NotificationType.BOOKING_REMINDER,
-                        title,
-                        message
-                );
+        for (Booking booking : upcomingBookings) {
+            if (Boolean.TRUE.equals(booking.getReminderSent())) {
+                continue;
             }
+
+            notificationService.sendBookingReminderNotification(booking);
+
+            booking.setReminderSent(true);
+            bookingRepository.save(booking);
         }
     }
 }

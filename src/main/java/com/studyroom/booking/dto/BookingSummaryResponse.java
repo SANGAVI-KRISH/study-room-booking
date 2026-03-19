@@ -1,42 +1,73 @@
 package com.studyroom.booking.dto;
 
-import java.time.LocalDate;
-import java.time.LocalTime;
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.studyroom.booking.model.BookingStatus;
+
+import java.time.Duration;
+import java.time.OffsetDateTime;
+import java.util.UUID;
 
 public class BookingSummaryResponse {
 
-    private Long roomId;
+    private UUID roomId;
     private String roomName;
-    private Long userId;
-    private LocalDate bookingDate;
-    private LocalTime startTime;
-    private LocalTime endTime;
-    private long durationInMinutes;
-    private String status;
+    private UUID userId;
+
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ssXXX")
+    private OffsetDateTime startAt;
+
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ssXXX")
+    private OffsetDateTime endAt;
+
+    private String purpose;
+    private Integer attendeeCount;
+
+    private long durationMinutes;   // 🔥 renamed to match controller
+    private BookingStatus status;
     private String message;
 
     public BookingSummaryResponse() {
     }
 
-    public BookingSummaryResponse(Long roomId, String roomName, Long userId, LocalDate bookingDate,
-                                  LocalTime startTime, LocalTime endTime, long durationInMinutes,
-                                  String status, String message) {
+    public BookingSummaryResponse(UUID roomId,
+                                  String roomName,
+                                  UUID userId,
+                                  OffsetDateTime startAt,
+                                  OffsetDateTime endAt,
+                                  String purpose,
+                                  Integer attendeeCount,
+                                  BookingStatus status,
+                                  String message) {
         this.roomId = roomId;
         this.roomName = roomName;
         this.userId = userId;
-        this.bookingDate = bookingDate;
-        this.startTime = startTime;
-        this.endTime = endTime;
-        this.durationInMinutes = durationInMinutes;
+        this.startAt = startAt;
+        this.endAt = endAt;
+        this.purpose = purpose;
+        this.attendeeCount = attendeeCount;
         this.status = status;
         this.message = message;
+        this.durationMinutes = calculateDuration(startAt, endAt);
     }
 
-    public Long getRoomId() {
+    private long calculateDuration(OffsetDateTime startAt, OffsetDateTime endAt) {
+        if (startAt != null && endAt != null && endAt.isAfter(startAt)) {
+            return Duration.between(startAt, endAt).toMinutes();
+        }
+        return 0;
+    }
+
+    private void recalculateDuration() {
+        this.durationMinutes = calculateDuration(this.startAt, this.endAt);
+    }
+
+    // -------- GETTERS & SETTERS --------
+
+    public UUID getRoomId() {
         return roomId;
     }
 
-    public void setRoomId(Long roomId) {
+    public void setRoomId(UUID roomId) {
         this.roomId = roomId;
     }
 
@@ -48,51 +79,61 @@ public class BookingSummaryResponse {
         this.roomName = roomName;
     }
 
-    public Long getUserId() {
+    public UUID getUserId() {
         return userId;
     }
 
-    public void setUserId(Long userId) {
+    public void setUserId(UUID userId) {
         this.userId = userId;
     }
 
-    public LocalDate getBookingDate() {
-        return bookingDate;
+    public OffsetDateTime getStartAt() {
+        return startAt;
     }
 
-    public void setBookingDate(LocalDate bookingDate) {
-        this.bookingDate = bookingDate;
+    public void setStartAt(OffsetDateTime startAt) {
+        this.startAt = startAt;
+        recalculateDuration();
     }
 
-    public LocalTime getStartTime() {
-        return startTime;
+    public OffsetDateTime getEndAt() {
+        return endAt;
     }
 
-    public void setStartTime(LocalTime startTime) {
-        this.startTime = startTime;
+    public void setEndAt(OffsetDateTime endAt) {
+        this.endAt = endAt;
+        recalculateDuration();
     }
 
-    public LocalTime getEndTime() {
-        return endTime;
+    public String getPurpose() {
+        return purpose;
     }
 
-    public void setEndTime(LocalTime endTime) {
-        this.endTime = endTime;
+    public void setPurpose(String purpose) {
+        this.purpose = purpose;
     }
 
-    public long getDurationInMinutes() {
-        return durationInMinutes;
+    public Integer getAttendeeCount() {
+        return attendeeCount;
     }
 
-    public void setDurationInMinutes(long durationInMinutes) {
-        this.durationInMinutes = durationInMinutes;
+    public void setAttendeeCount(Integer attendeeCount) {
+        this.attendeeCount = attendeeCount;
     }
 
-    public String getStatus() {
+    public long getDurationMinutes() {
+        return durationMinutes;
+    }
+
+    public void setDurationMinutes(long durationMinutes) {
+        this.durationMinutes = durationMinutes;
+    }
+
+    public BookingStatus getStatus() {
         return status;
     }
 
-    public void setStatus(String status) {
+    public void setStatus(BookingStatus status) {
         this.status = status;
     }
 

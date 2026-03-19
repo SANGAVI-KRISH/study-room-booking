@@ -9,8 +9,10 @@ import com.studyroom.booking.repository.StudyRoomRepository;
 import com.studyroom.booking.repository.UserRepository;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.LocalDate;
-import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 
@@ -20,22 +22,37 @@ public class BookingService {
     private final BookingRepository bookingRepository;
     private final StudyRoomRepository studyRoomRepository;
     private final UserRepository userRepository;
+    private final NotificationService notificationService;
+
+    private static final ZoneId APP_ZONE = ZoneId.of("Asia/Kolkata");
+
+    private static final long MIN_BOOKING_DURATION_MINUTES = 30;
+    private static final long MAX_BOOKING_DURATION_MINUTES = 240;
 
     private static final List<BookingStatus> ACTIVE_BOOKING_STATUSES =
             List.of(BookingStatus.PENDING, BookingStatus.APPROVED);
 
     private static final List<BookingStatus> HISTORY_BOOKING_STATUSES =
-            List.of(BookingStatus.COMPLETED, BookingStatus.CANCELLED, BookingStatus.REJECTED);
+            List.of(
+                    BookingStatus.COMPLETED,
+                    BookingStatus.CANCELLED,
+                    BookingStatus.REJECTED,
+                    BookingStatus.AUTO_CANCELLED
+            );
 
     public BookingService(
             BookingRepository bookingRepository,
             StudyRoomRepository studyRoomRepository,
-            UserRepository userRepository
+            UserRepository userRepository,
+            NotificationService notificationService
     ) {
         this.bookingRepository = bookingRepository;
         this.studyRoomRepository = studyRoomRepository;
         this.userRepository = userRepository;
+        this.notificationService = notificationService;
     }
+
+    // ---------------- BASIC GET METHODS ----------------
 
     public List<Booking> getAllBookings() {
         return bookingRepository.findAll();
@@ -47,37 +64,39 @@ public class BookingService {
     }
 
     public List<Booking> getBookingsByRoomId(UUID roomId) {
-        return bookingRepository.findByRoom_Id(roomId);
+        validateUuid(roomId, "Room ID is required");
+        return bookingRepository.findByRoom_IdOrderByStartAtAsc(roomId);
     }
 
     public List<Booking> getBookingsByUserId(UUID userId) {
-        return bookingRepository.findByUser_Id(userId);
+        validateUuid(userId, "User ID is required");
+        return bookingRepository.findByUser_IdOrderByStartAtDesc(userId);
     }
 
     public List<Booking> getCurrentBookings(UUID userId) {
-        LocalDate today = LocalDate.now();
-        return bookingRepository.findByUser_IdAndBookingDateGreaterThanEqual(userId, today);
+        validateUuid(userId, "User ID is required");
+        OffsetDateTime now = OffsetDateTime.now(APP_ZONE);
+        return bookingRepository.findByUser_IdAndStartAtGreaterThanEqualOrderByStartAtAsc(userId, now);
     }
 
     public List<Booking> getPastBookings(UUID userId) {
-        LocalDate today = LocalDate.now();
-        return bookingRepository.findByUser_IdAndBookingDateBefore(userId, today);
+        validateUuid(userId, "User ID is required");
+        OffsetDateTime now = OffsetDateTime.now(APP_ZONE);
+        return bookingRepository.findByUser_IdAndStartAtBeforeOrderByStartAtDesc(userId, now);
     }
 
     public List<Booking> getActiveCurrentBookings(UUID userId) {
-        LocalDate today = LocalDate.now();
-        return bookingRepository.findByUser_IdAndBookingDateGreaterThanEqualAndStatusIn(
+        validateUuid(userId, "User ID is required");
+        OffsetDateTime now = OffsetDateTime.now(APP_ZONE);
+        return bookingRepository.findByUser_IdAndStartAtGreaterThanEqualAndStatusInOrderByStartAtAsc(
                 userId,
-                today,
+                now,
                 ACTIVE_BOOKING_STATUSES
         );
     }
 
-    public List<Booking> getBookingsByDate(LocalDate bookingDate) {
-        return bookingRepository.findByBookingDate(bookingDate);
-    }
-
     public List<Booking> getBookingsByStatus(BookingStatus status) {
+        validateStatus(status);
         return bookingRepository.findByStatus(status);
     }
 
@@ -101,71 +120,112 @@ public class BookingService {
         return bookingRepository.findByStatus(BookingStatus.COMPLETED);
     }
 
-    public List<Booking> getBookingsByRoomIdAndDate(UUID roomId, LocalDate bookingDate) {
-        return bookingRepository.findByRoom_IdAndBookingDate(roomId, bookingDate);
-    }
-
-    public List<Booking> getBookingsByUserIdAndStatus(UUID userId, BookingStatus status) {
-        return bookingRepository.findByUser_IdAndStatus(userId, status);
-    }
-
     public List<Booking> getBookingsByRoomIdAndStatus(UUID roomId, BookingStatus status) {
+        validateUuid(roomId, "Room ID is required");
+        validateStatus(status);
         return bookingRepository.findByRoom_IdAndStatus(roomId, status);
     }
 
+    public List<Booking> getBookingsByUserIdAndStatus(UUID userId, BookingStatus status) {
+        validateUuid(userId, "User ID is required");
+        validateStatus(status);
+        return bookingRepository.findByUser_IdAndStatus(userId, status);
+    }
+
+    public List<Booking> getBookingsByDate(LocalDate bookingDate) {
+        validateSingleDate(bookingDate);
+
+        OffsetDateTime dayStart = bookingDate.atStartOfDay().atZone(APP_ZONE).toOffsetDateTime();
+        OffsetDateTime dayEnd = bookingDate.plusDays(1).atStartOfDay().atZone(APP_ZONE).toOffsetDateTime();
+
+        return bookingRepository.findByStartAtBetween(dayStart, dayEnd);
+    }
+
+    public List<Booking> getBookingsByRoomIdAndDate(UUID roomId, LocalDate bookingDate) {
+        validateUuid(roomId, "Room ID is required");
+        validateSingleDate(bookingDate);
+
+        OffsetDateTime dayStart = bookingDate.atStartOfDay().atZone(APP_ZONE).toOffsetDateTime();
+        OffsetDateTime dayEnd = bookingDate.plusDays(1).atStartOfDay().atZone(APP_ZONE).toOffsetDateTime();
+
+        return bookingRepository.findByRoom_IdAndStartAtBetween(roomId, dayStart, dayEnd);
+    }
+
+    public List<Booking> getBookingsByUserIdAndDate(UUID userId, LocalDate bookingDate) {
+        validateUuid(userId, "User ID is required");
+        validateSingleDate(bookingDate);
+
+        OffsetDateTime dayStart = bookingDate.atStartOfDay().atZone(APP_ZONE).toOffsetDateTime();
+        OffsetDateTime dayEnd = bookingDate.plusDays(1).atStartOfDay().atZone(APP_ZONE).toOffsetDateTime();
+
+        return bookingRepository.findByUser_IdAndStartAtBetween(userId, dayStart, dayEnd);
+    }
+
     public List<Booking> getBookingsByDateAndStatus(LocalDate bookingDate, BookingStatus status) {
-        return bookingRepository.findByBookingDateAndStatus(bookingDate, status);
+        validateSingleDate(bookingDate);
+        validateStatus(status);
+
+        OffsetDateTime dayStart = bookingDate.atStartOfDay().atZone(APP_ZONE).toOffsetDateTime();
+        OffsetDateTime dayEnd = bookingDate.plusDays(1).atStartOfDay().atZone(APP_ZONE).toOffsetDateTime();
+
+        return bookingRepository.findByStartAtBetweenAndStatusIn(dayStart, dayEnd, List.of(status));
     }
 
     // ---------------- BOOKING HISTORY MODULE ----------------
 
     public List<Booking> getBookingHistory(UUID userId) {
+        validateUuid(userId, "User ID is required");
         return bookingRepository.findByUser_IdAndStatusIn(userId, HISTORY_BOOKING_STATUSES);
     }
 
     public List<Booking> getCompletedBookingsByUserId(UUID userId) {
+        validateUuid(userId, "User ID is required");
         return bookingRepository.findByUser_IdAndStatus(userId, BookingStatus.COMPLETED);
     }
 
     public List<Booking> getCancelledBookingsByUserId(UUID userId) {
+        validateUuid(userId, "User ID is required");
         return bookingRepository.findByUser_IdAndStatus(userId, BookingStatus.CANCELLED);
     }
 
     public List<Booking> getRejectedBookingsByUserId(UUID userId) {
+        validateUuid(userId, "User ID is required");
         return bookingRepository.findByUser_IdAndStatus(userId, BookingStatus.REJECTED);
     }
 
-    public List<Booking> getBookingsByUserIdAndDate(UUID userId, LocalDate bookingDate) {
-        return bookingRepository.findByUser_IdAndBookingDate(userId, bookingDate);
-    }
-
     public List<Booking> getBookingHistoryByDate(UUID userId, LocalDate bookingDate) {
-        return bookingRepository.findByUser_IdAndBookingDateBetweenAndStatusIn(
+        validateUuid(userId, "User ID is required");
+        validateSingleDate(bookingDate);
+
+        OffsetDateTime dayStart = bookingDate.atStartOfDay().atZone(APP_ZONE).toOffsetDateTime();
+        OffsetDateTime dayEnd = bookingDate.plusDays(1).atStartOfDay().atZone(APP_ZONE).toOffsetDateTime();
+
+        return bookingRepository.findByUser_IdAndStartAtBetweenAndStatusIn(
                 userId,
-                bookingDate,
-                bookingDate,
+                dayStart,
+                dayEnd,
                 HISTORY_BOOKING_STATUSES
         );
     }
 
     public List<Booking> getBookingHistoryByDateRange(UUID userId, LocalDate startDate, LocalDate endDate) {
-        if (startDate == null || endDate == null) {
-            throw new RuntimeException("Start date and end date are required");
-        }
+        validateUuid(userId, "User ID is required");
+        validateDateRange(startDate, endDate);
 
-        if (endDate.isBefore(startDate)) {
-            throw new RuntimeException("End date cannot be before start date");
-        }
+        OffsetDateTime rangeStart = startDate.atStartOfDay().atZone(APP_ZONE).toOffsetDateTime();
+        OffsetDateTime rangeEnd = endDate.plusDays(1).atStartOfDay().atZone(APP_ZONE).toOffsetDateTime();
 
-        return bookingRepository.findByUser_IdAndBookingDateBetweenAndStatusIn(
+        return bookingRepository.findByUser_IdAndStartAtBetweenAndStatusIn(
                 userId,
-                startDate,
-                endDate,
+                rangeStart,
+                rangeEnd,
                 HISTORY_BOOKING_STATUSES
         );
     }
 
     public List<Booking> getBookingHistoryByStatuses(UUID userId, List<BookingStatus> statuses) {
+        validateUuid(userId, "User ID is required");
+
         if (statuses == null || statuses.isEmpty()) {
             throw new RuntimeException("At least one booking status is required");
         }
@@ -178,19 +238,27 @@ public class BookingService {
     }
 
     public List<Booking> getAllBookingHistoryForAdminByDateRange(LocalDate startDate, LocalDate endDate) {
-        if (startDate == null || endDate == null) {
-            throw new RuntimeException("Start date and end date are required");
-        }
+        validateDateRange(startDate, endDate);
 
-        if (endDate.isBefore(startDate)) {
-            throw new RuntimeException("End date cannot be before start date");
-        }
+        OffsetDateTime rangeStart = startDate.atStartOfDay().atZone(APP_ZONE).toOffsetDateTime();
+        OffsetDateTime rangeEnd = endDate.plusDays(1).atStartOfDay().atZone(APP_ZONE).toOffsetDateTime();
 
-        return bookingRepository.findByBookingDateBetweenAndStatusIn(
-                startDate,
-                endDate,
+        return bookingRepository.findByStartAtBetweenAndStatusIn(
+                rangeStart,
+                rangeEnd,
                 HISTORY_BOOKING_STATUSES
         );
+    }
+
+    // ---------------- BOOKING SUMMARY SUPPORT ----------------
+
+    public String getRoomNameById(UUID roomId) {
+        validateUuid(roomId, "Room ID is required");
+
+        StudyRoom room = studyRoomRepository.findById(roomId)
+                .orElseThrow(() -> new RuntimeException("Room not found with id: " + roomId));
+
+        return room.getBlockName() + " - " + room.getRoomNumber();
     }
 
     // ---------------- BOOKING CREATION ----------------
@@ -198,11 +266,21 @@ public class BookingService {
     public Booking createBooking(
             UUID roomId,
             UUID userId,
-            LocalDate bookingDate,
-            LocalTime startTime,
-            LocalTime endTime
+            OffsetDateTime startAt,
+            OffsetDateTime endAt
     ) {
-        validateBookingInputs(roomId, userId, bookingDate, startTime, endTime);
+        return createBooking(roomId, userId, startAt, endAt, null, null);
+    }
+
+    public Booking createBooking(
+            UUID roomId,
+            UUID userId,
+            OffsetDateTime startAt,
+            OffsetDateTime endAt,
+            String purpose,
+            Integer attendeeCount
+    ) {
+        validateBookingInputs(roomId, userId, startAt, endAt, attendeeCount);
 
         StudyRoom room = studyRoomRepository.findById(roomId)
                 .orElseThrow(() -> new RuntimeException("Room not found with id: " + roomId));
@@ -210,47 +288,68 @@ public class BookingService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found with id: " + userId));
 
-        boolean alreadyBooked = bookingRepository
-                .existsByRoom_IdAndBookingDateAndStatusInAndStartTimeLessThanAndEndTimeGreaterThan(
+        boolean roomAlreadyBooked =
+                bookingRepository.existsByRoom_IdAndStatusInAndStartAtLessThanAndEndAtGreaterThan(
                         roomId,
-                        bookingDate,
                         ACTIVE_BOOKING_STATUSES,
-                        endTime,
-                        startTime
+                        endAt,
+                        startAt
                 );
 
-        if (alreadyBooked) {
+        if (roomAlreadyBooked) {
             throw new RuntimeException("Room is already booked for the selected time slot");
+        }
+
+        boolean userAlreadyBooked =
+                bookingRepository.existsByUser_IdAndStatusInAndStartAtLessThanAndEndAtGreaterThan(
+                        userId,
+                        ACTIVE_BOOKING_STATUSES,
+                        endAt,
+                        startAt
+                );
+
+        if (userAlreadyBooked) {
+            throw new RuntimeException("User already has another active booking for the selected time slot");
         }
 
         Booking booking = new Booking();
         booking.setRoom(room);
         booking.setUser(user);
-        booking.setBookingDate(bookingDate);
-        booking.setStartTime(startTime);
-        booking.setEndTime(endTime);
+        booking.setStartAt(startAt);
+        booking.setEndAt(endAt);
+        booking.setPurpose(purpose);
+        booking.setAttendeeCount(attendeeCount);
+        booking.setCheckinStatus("not_checked_in");
+        booking.setCancellationReason(null);
+        booking.setApprovalTime(null);
+        booking.setApprovedBy(null);
+        booking.setReminderSent(false);
 
         if (room.isApprovalRequired()) {
             booking.setStatus(BookingStatus.PENDING);
         } else {
             booking.setStatus(BookingStatus.APPROVED);
+            booking.setApprovalTime(OffsetDateTime.now(APP_ZONE));
+            booking.setApprovedBy(user);
         }
 
-        return bookingRepository.save(booking);
+        Booking savedBooking = bookingRepository.save(booking);
+
+        if (savedBooking.getStatus() == BookingStatus.APPROVED) {
+            notificationService.sendBookingConfirmedNotification(savedBooking);
+        }
+
+        return savedBooking;
     }
 
     // ---------------- STATUS UPDATE ----------------
 
     public Booking updateBookingStatus(UUID bookingId, BookingStatus status) {
-        if (status == null) {
-            throw new RuntimeException("Booking status is required");
-        }
-
-        Booking booking = bookingRepository.findById(bookingId)
-                .orElseThrow(() -> new RuntimeException("Booking not found with id: " + bookingId));
+        validateUuid(bookingId, "Booking ID is required");
+        validateStatus(status);
 
         if (status == BookingStatus.APPROVED) {
-            return approveBooking(bookingId);
+            throw new RuntimeException("Use approveBooking with approver user ID");
         }
 
         if (status == BookingStatus.REJECTED) {
@@ -265,15 +364,37 @@ public class BookingService {
             return completeBooking(bookingId);
         }
 
+        if (status == BookingStatus.AUTO_CANCELLED) {
+            return autoCancelBooking(bookingId);
+        }
+
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new RuntimeException("Booking not found with id: " + bookingId));
+
         booking.setStatus(status);
         return bookingRepository.save(booking);
     }
 
-    public Booking approveBooking(UUID bookingId) {
+    public Booking approveBooking(UUID bookingId, UUID approvedByUserId) {
+        validateUuid(bookingId, "Booking ID is required");
+        validateUuid(approvedByUserId, "Approved by user ID is required");
+
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new RuntimeException("Booking not found with id: " + bookingId));
 
+        User approver = userRepository.findById(approvedByUserId)
+                .orElseThrow(() -> new RuntimeException("Approver user not found with id: " + approvedByUserId));
+
         if (booking.getStatus() == BookingStatus.APPROVED) {
+            if (booking.getApprovedBy() == null) {
+                booking.setApprovedBy(approver);
+                if (booking.getApprovalTime() == null) {
+                    booking.setApprovalTime(OffsetDateTime.now(APP_ZONE));
+                }
+                Booking savedBooking = bookingRepository.save(booking);
+                notificationService.sendBookingApprovedNotification(savedBooking);
+                return savedBooking;
+            }
             return booking;
         }
 
@@ -289,13 +410,16 @@ public class BookingService {
             throw new RuntimeException("Completed booking cannot be approved");
         }
 
-        boolean conflictingApprovedBooking = bookingRepository
-                .existsByRoom_IdAndBookingDateAndStatusInAndStartTimeLessThanAndEndTimeGreaterThanAndIdNot(
+        if (booking.getStatus() == BookingStatus.AUTO_CANCELLED) {
+            throw new RuntimeException("Auto-cancelled booking cannot be approved");
+        }
+
+        boolean conflictingApprovedBooking =
+                bookingRepository.existsByRoom_IdAndStatusInAndStartAtLessThanAndEndAtGreaterThanAndIdNot(
                         booking.getRoom().getId(),
-                        booking.getBookingDate(),
                         List.of(BookingStatus.APPROVED),
-                        booking.getEndTime(),
-                        booking.getStartTime(),
+                        booking.getEndAt(),
+                        booking.getStartAt(),
                         booking.getId()
                 );
 
@@ -304,10 +428,17 @@ public class BookingService {
         }
 
         booking.setStatus(BookingStatus.APPROVED);
-        return bookingRepository.save(booking);
+        booking.setApprovalTime(OffsetDateTime.now(APP_ZONE));
+        booking.setApprovedBy(approver);
+
+        Booking savedBooking = bookingRepository.save(booking);
+        notificationService.sendBookingApprovedNotification(savedBooking);
+        return savedBooking;
     }
 
     public Booking rejectBooking(UUID bookingId) {
+        validateUuid(bookingId, "Booking ID is required");
+
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new RuntimeException("Booking not found with id: " + bookingId));
 
@@ -323,11 +454,22 @@ public class BookingService {
             throw new RuntimeException("Completed booking cannot be rejected");
         }
 
+        if (booking.getStatus() == BookingStatus.AUTO_CANCELLED) {
+            throw new RuntimeException("Auto-cancelled booking cannot be rejected");
+        }
+
         booking.setStatus(BookingStatus.REJECTED);
-        return bookingRepository.save(booking);
+        booking.setApprovalTime(null);
+        booking.setApprovedBy(null);
+
+        Booking savedBooking = bookingRepository.save(booking);
+        notificationService.sendBookingRejectedNotification(savedBooking);
+        return savedBooking;
     }
 
     public Booking cancelBooking(UUID bookingId) {
+        validateUuid(bookingId, "Booking ID is required");
+
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new RuntimeException("Booking not found with id: " + bookingId));
 
@@ -343,11 +485,41 @@ public class BookingService {
             throw new RuntimeException("Completed booking cannot be cancelled");
         }
 
+        if (booking.getStatus() == BookingStatus.AUTO_CANCELLED) {
+            throw new RuntimeException("Auto-cancelled booking cannot be cancelled");
+        }
+
         booking.setStatus(BookingStatus.CANCELLED);
-        return bookingRepository.save(booking);
+
+        Booking savedBooking = bookingRepository.save(booking);
+        notificationService.sendBookingCancelledNotification(savedBooking);
+        return savedBooking;
+    }
+
+    public Booking autoCancelBooking(UUID bookingId) {
+        validateUuid(bookingId, "Booking ID is required");
+
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new RuntimeException("Booking not found with id: " + bookingId));
+
+        if (booking.getStatus() == BookingStatus.AUTO_CANCELLED) {
+            return booking;
+        }
+
+        if (booking.getStatus() == BookingStatus.COMPLETED) {
+            throw new RuntimeException("Completed booking cannot be auto-cancelled");
+        }
+
+        booking.setStatus(BookingStatus.AUTO_CANCELLED);
+
+        Booking savedBooking = bookingRepository.save(booking);
+        notificationService.sendBookingCancelledNotification(savedBooking);
+        return savedBooking;
     }
 
     public Booking completeBooking(UUID bookingId) {
+        validateUuid(bookingId, "Booking ID is required");
+
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new RuntimeException("Booking not found with id: " + bookingId));
 
@@ -363,6 +535,10 @@ public class BookingService {
             throw new RuntimeException("Rejected booking cannot be completed");
         }
 
+        if (booking.getStatus() == BookingStatus.AUTO_CANCELLED) {
+            throw new RuntimeException("Auto-cancelled booking cannot be completed");
+        }
+
         if (booking.getStatus() != BookingStatus.APPROVED) {
             throw new RuntimeException("Only approved booking can be marked as completed");
         }
@@ -375,25 +551,24 @@ public class BookingService {
 
     public Booking rescheduleBooking(
             UUID bookingId,
-            LocalDate bookingDate,
-            LocalTime startTime,
-            LocalTime endTime
+            OffsetDateTime startAt,
+            OffsetDateTime endAt
     ) {
-        if (bookingDate == null) {
-            throw new RuntimeException("Booking date is required");
-        }
+        validateUuid(bookingId, "Booking ID is required");
 
-        if (startTime == null || endTime == null) {
+        if (startAt == null || endAt == null) {
             throw new RuntimeException("Start time and end time are required");
         }
 
-        if (!endTime.isAfter(startTime)) {
+        if (!endAt.isAfter(startAt)) {
             throw new RuntimeException("End time must be after start time");
         }
 
-        if (bookingDate.isBefore(LocalDate.now())) {
-            throw new RuntimeException("Booking date cannot be in the past");
+        if (!startAt.isAfter(OffsetDateTime.now(APP_ZONE))) {
+            throw new RuntimeException("Start time must be in the future");
         }
+
+        validateBookingDuration(startAt, endAt);
 
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new RuntimeException("Booking not found with id: " + bookingId));
@@ -410,36 +585,66 @@ public class BookingService {
             throw new RuntimeException("Completed booking cannot be rescheduled");
         }
 
-        boolean alreadyBooked = bookingRepository
-                .existsByRoom_IdAndBookingDateAndStatusInAndStartTimeLessThanAndEndTimeGreaterThanAndIdNot(
+        if (booking.getStatus() == BookingStatus.AUTO_CANCELLED) {
+            throw new RuntimeException("Auto-cancelled booking cannot be rescheduled");
+        }
+
+        boolean roomAlreadyBooked =
+                bookingRepository.existsByRoom_IdAndStatusInAndStartAtLessThanAndEndAtGreaterThanAndIdNot(
                         booking.getRoom().getId(),
-                        bookingDate,
                         ACTIVE_BOOKING_STATUSES,
-                        endTime,
-                        startTime,
+                        endAt,
+                        startAt,
                         booking.getId()
                 );
 
-        if (alreadyBooked) {
+        if (roomAlreadyBooked) {
             throw new RuntimeException("Room is already booked for the selected time slot");
         }
 
-        booking.setBookingDate(bookingDate);
-        booking.setStartTime(startTime);
-        booking.setEndTime(endTime);
+        boolean userAlreadyBooked =
+                bookingRepository.existsByUser_IdAndStatusInAndStartAtLessThanAndEndAtGreaterThanAndIdNot(
+                        booking.getUser().getId(),
+                        ACTIVE_BOOKING_STATUSES,
+                        endAt,
+                        startAt,
+                        booking.getId()
+                );
+
+        if (userAlreadyBooked) {
+            throw new RuntimeException("User already has another active booking for the selected time slot");
+        }
+
+        booking.setStartAt(startAt);
+        booking.setEndAt(endAt);
+        booking.setCheckinStatus("not_checked_in");
+        booking.setCancellationReason(null);
+        booking.setReminderSent(false);
 
         if (booking.getRoom().isApprovalRequired()) {
             booking.setStatus(BookingStatus.PENDING);
+            booking.setApprovalTime(null);
+            booking.setApprovedBy(null);
         } else {
             booking.setStatus(BookingStatus.APPROVED);
+            booking.setApprovalTime(OffsetDateTime.now(APP_ZONE));
+            booking.setApprovedBy(booking.getUser());
         }
 
-        return bookingRepository.save(booking);
+        Booking savedBooking = bookingRepository.save(booking);
+
+        if (savedBooking.getStatus() == BookingStatus.APPROVED) {
+            notificationService.sendBookingConfirmedNotification(savedBooking);
+        }
+
+        return savedBooking;
     }
 
     // ---------------- DELETE ----------------
 
     public void deleteBooking(UUID bookingId) {
+        validateUuid(bookingId, "Booking ID is required");
+
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new RuntimeException("Booking not found with id: " + bookingId));
 
@@ -451,32 +656,79 @@ public class BookingService {
     private void validateBookingInputs(
             UUID roomId,
             UUID userId,
-            LocalDate bookingDate,
-            LocalTime startTime,
-            LocalTime endTime
+            OffsetDateTime startAt,
+            OffsetDateTime endAt,
+            Integer attendeeCount
     ) {
-        if (roomId == null) {
-            throw new RuntimeException("Room ID is required");
+        validateUuid(roomId, "Room ID is required");
+        validateUuid(userId, "User ID is required");
+
+        if (startAt == null) {
+            throw new RuntimeException("Start time is required");
         }
 
-        if (userId == null) {
-            throw new RuntimeException("User ID is required");
+        if (endAt == null) {
+            throw new RuntimeException("End time is required");
         }
 
-        if (bookingDate == null) {
-            throw new RuntimeException("Booking date is required");
-        }
-
-        if (startTime == null || endTime == null) {
-            throw new RuntimeException("Start time and end time are required");
-        }
-
-        if (!endTime.isAfter(startTime)) {
+        if (!endAt.isAfter(startAt)) {
             throw new RuntimeException("End time must be after start time");
         }
 
-        if (bookingDate.isBefore(LocalDate.now())) {
-            throw new RuntimeException("Booking date cannot be in the past");
+        OffsetDateTime now = OffsetDateTime.now(APP_ZONE);
+
+        if (!startAt.isAfter(now)) {
+            throw new RuntimeException("Booking start time must be in the future");
+        }
+
+        validateBookingDuration(startAt, endAt);
+
+        if (attendeeCount != null && attendeeCount <= 0) {
+            throw new RuntimeException("Attendee count must be greater than 0");
+        }
+    }
+
+    private void validateBookingDuration(OffsetDateTime startAt, OffsetDateTime endAt) {
+        long durationMinutes = Duration.between(startAt, endAt).toMinutes();
+
+        if (durationMinutes < MIN_BOOKING_DURATION_MINUTES) {
+            throw new RuntimeException("Minimum booking duration is 30 minutes");
+        }
+
+        if (durationMinutes > MAX_BOOKING_DURATION_MINUTES) {
+            throw new RuntimeException("Maximum booking duration is 4 hours");
+        }
+    }
+
+    private void validateSingleDate(LocalDate date) {
+        if (date == null) {
+            throw new RuntimeException("Date is required");
+        }
+    }
+
+    private void validateDateRange(LocalDate startDate, LocalDate endDate) {
+        if (startDate == null) {
+            throw new RuntimeException("Start date is required");
+        }
+
+        if (endDate == null) {
+            throw new RuntimeException("End date is required");
+        }
+
+        if (endDate.isBefore(startDate)) {
+            throw new RuntimeException("End date must be on or after start date");
+        }
+    }
+
+    private void validateStatus(BookingStatus status) {
+        if (status == null) {
+            throw new RuntimeException("Booking status is required");
+        }
+    }
+
+    private void validateUuid(UUID id, String message) {
+        if (id == null) {
+            throw new RuntimeException(message);
         }
     }
 }

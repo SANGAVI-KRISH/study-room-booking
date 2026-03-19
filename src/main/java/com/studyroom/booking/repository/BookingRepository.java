@@ -5,105 +5,138 @@ import com.studyroom.booking.model.BookingStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
-import java.time.LocalDate;
-import java.time.LocalTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
 @Repository
 public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
-    // Basic queries
     List<Booking> findByRoom_Id(UUID roomId);
+
+    List<Booking> findByRoom_IdOrderByStartAtAsc(UUID roomId);
 
     List<Booking> findByUser_Id(UUID userId);
 
-    List<Booking> findByBookingDate(LocalDate bookingDate);
+    List<Booking> findByUser_IdOrderByStartAtDesc(UUID userId);
 
     List<Booking> findByStatus(BookingStatus status);
 
-    List<Booking> findByRoom_IdAndBookingDate(UUID roomId, LocalDate bookingDate);
-
-    // Status-based queries
-    List<Booking> findByUser_IdAndStatus(UUID userId, BookingStatus status);
+    List<Booking> findByStatusIn(List<BookingStatus> statuses);
 
     List<Booking> findByRoom_IdAndStatus(UUID roomId, BookingStatus status);
 
-    List<Booking> findByBookingDateAndStatus(LocalDate bookingDate, BookingStatus status);
+    List<Booking> findByRoom_IdAndStatusIn(UUID roomId, List<BookingStatus> statuses);
 
-    List<Booking> findByRoom_IdAndBookingDateAndStatus(UUID roomId, LocalDate bookingDate, BookingStatus status);
-
-    // History and upcoming bookings
-    List<Booking> findByUser_IdAndBookingDateBefore(UUID userId, LocalDate date);
-
-    List<Booking> findByUser_IdAndBookingDateGreaterThanEqual(UUID userId, LocalDate date);
-
-    List<Booking> findByUser_IdAndBookingDateGreaterThanEqualAndStatusNot(
-            UUID userId,
-            LocalDate date,
-            BookingStatus status
-    );
-
-    List<Booking> findByUser_IdAndBookingDateGreaterThanEqualAndStatusIn(
-            UUID userId,
-            LocalDate date,
-            List<BookingStatus> statuses
-    );
-
-    List<Booking> findByRoom_IdAndBookingDateAndStatusIn(
-            UUID roomId,
-            LocalDate bookingDate,
-            List<BookingStatus> statuses
-    );
-
-    // Booking History Module
-    List<Booking> findByUser_IdAndBookingDate(UUID userId, LocalDate bookingDate);
-
-    List<Booking> findByUser_IdAndBookingDateBetween(UUID userId, LocalDate startDate, LocalDate endDate);
+    List<Booking> findByUser_IdAndStatus(UUID userId, BookingStatus status);
 
     List<Booking> findByUser_IdAndStatusIn(UUID userId, List<BookingStatus> statuses);
 
-    List<Booking> findByUser_IdAndBookingDateBetweenAndStatusIn(
+    List<Booking> findByStartAtBetween(OffsetDateTime start, OffsetDateTime end);
+
+    List<Booking> findByStatusAndStartAtBetween(
+            BookingStatus status,
+            OffsetDateTime start,
+            OffsetDateTime end
+    );
+
+    List<Booking> findByStartAtBetweenAndStatusIn(
+            OffsetDateTime start,
+            OffsetDateTime end,
+            List<BookingStatus> statuses
+    );
+
+    List<Booking> findByRoom_IdAndStartAtBetween(
+            UUID roomId,
+            OffsetDateTime start,
+            OffsetDateTime end
+    );
+
+    List<Booking> findByRoom_IdAndStartAtBetweenAndStatusIn(
+            UUID roomId,
+            OffsetDateTime start,
+            OffsetDateTime end,
+            List<BookingStatus> statuses
+    );
+
+    List<Booking> findByUser_IdAndStartAtBetween(
             UUID userId,
-            LocalDate startDate,
-            LocalDate endDate,
+            OffsetDateTime start,
+            OffsetDateTime end
+    );
+
+    List<Booking> findByUser_IdAndStartAtBetweenAndStatusIn(
+            UUID userId,
+            OffsetDateTime start,
+            OffsetDateTime end,
             List<BookingStatus> statuses
     );
 
-    // Admin history / records
-    List<Booking> findByBookingDateBetween(LocalDate startDate, LocalDate endDate);
+    List<Booking> findByStartAtBefore(OffsetDateTime dateTime);
 
-    List<Booking> findByStatusIn(List<BookingStatus> statuses);
+    List<Booking> findByEndAtBefore(OffsetDateTime dateTime);
 
-    List<Booking> findByBookingDateBetweenAndStatusIn(
-            LocalDate startDate,
-            LocalDate endDate,
+    List<Booking> findByStartAtGreaterThanEqual(OffsetDateTime dateTime);
+
+    List<Booking> findByUser_IdAndStartAtBefore(UUID userId, OffsetDateTime dateTime);
+
+    List<Booking> findByUser_IdAndStartAtBeforeOrderByStartAtDesc(UUID userId, OffsetDateTime dateTime);
+
+    List<Booking> findByUser_IdAndStartAtGreaterThanEqual(UUID userId, OffsetDateTime dateTime);
+
+    List<Booking> findByUser_IdAndStartAtGreaterThanEqualOrderByStartAtAsc(UUID userId, OffsetDateTime dateTime);
+
+    List<Booking> findByUser_IdAndStartAtGreaterThanEqualAndStatusIn(
+            UUID userId,
+            OffsetDateTime dateTime,
             List<BookingStatus> statuses
     );
 
-    // Overlap checks for booking creation
-    boolean existsByRoom_IdAndBookingDateAndStartTimeLessThanAndEndTimeGreaterThan(
-            UUID roomId,
-            LocalDate bookingDate,
-            LocalTime endTime,
-            LocalTime startTime
+    List<Booking> findByUser_IdAndStartAtGreaterThanEqualAndStatusInOrderByStartAtAsc(
+            UUID userId,
+            OffsetDateTime dateTime,
+            List<BookingStatus> statuses
     );
 
-    boolean existsByRoom_IdAndBookingDateAndStatusInAndStartTimeLessThanAndEndTimeGreaterThan(
-            UUID roomId,
-            LocalDate bookingDate,
-            List<BookingStatus> statuses,
-            LocalTime endTime,
-            LocalTime startTime
+    List<Booking> findByUser_IdAndStartAtBeforeAndStatusIn(
+            UUID userId,
+            OffsetDateTime dateTime,
+            List<BookingStatus> statuses
     );
 
-    // Overlap check for booking update
-    boolean existsByRoom_IdAndBookingDateAndStatusInAndStartTimeLessThanAndEndTimeGreaterThanAndIdNot(
+    List<Booking> findByUser_IdAndStartAtBeforeAndStatusInOrderByStartAtDesc(
+            UUID userId,
+            OffsetDateTime dateTime,
+            List<BookingStatus> statuses
+    );
+
+    boolean existsByRoom_IdAndStatusInAndStartAtLessThanAndEndAtGreaterThan(
             UUID roomId,
-            LocalDate bookingDate,
             List<BookingStatus> statuses,
-            LocalTime endTime,
-            LocalTime startTime,
+            OffsetDateTime endAt,
+            OffsetDateTime startAt
+    );
+
+    boolean existsByRoom_IdAndStatusInAndStartAtLessThanAndEndAtGreaterThanAndIdNot(
+            UUID roomId,
+            List<BookingStatus> statuses,
+            OffsetDateTime endAt,
+            OffsetDateTime startAt,
+            UUID id
+    );
+
+    boolean existsByUser_IdAndStatusInAndStartAtLessThanAndEndAtGreaterThan(
+            UUID userId,
+            List<BookingStatus> statuses,
+            OffsetDateTime endAt,
+            OffsetDateTime startAt
+    );
+
+    boolean existsByUser_IdAndStatusInAndStartAtLessThanAndEndAtGreaterThanAndIdNot(
+            UUID userId,
+            List<BookingStatus> statuses,
+            OffsetDateTime endAt,
+            OffsetDateTime startAt,
             UUID id
     );
 }

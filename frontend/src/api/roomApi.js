@@ -25,6 +25,30 @@ function getAuthHeaders(isJson = true) {
   return headers;
 }
 
+function isValidUuid(value) {
+  return (
+    typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value.trim()
+    )
+  );
+}
+
+function validateUuid(value, fieldName) {
+  if (!value || typeof value !== "string" || !value.trim()) {
+    throw new Error(`${fieldName} is required`);
+  }
+
+  if (!isValidUuid(value.trim())) {
+    throw new Error(`${fieldName} must be a valid UUID`);
+  }
+}
+
+function isValidOffsetDateTime(value) {
+  if (typeof value !== "string" || !value.trim()) return false;
+  return !Number.isNaN(Date.parse(value));
+}
+
 function buildQueryParams(filters) {
   const params = new URLSearchParams();
 
@@ -92,6 +116,7 @@ async function handleResponse(response, defaultMessage) {
       errorMessage =
         errorData?.message ||
         errorData?.error ||
+        errorData?.details ||
         JSON.stringify(errorData) ||
         defaultMessage;
     } else {
@@ -104,13 +129,14 @@ async function handleResponse(response, defaultMessage) {
     errorMessage = defaultMessage;
   }
 
-  throw new Error(errorMessage);
-}
-
-function validateUuid(value, fieldName) {
-  if (!value || typeof value !== "string") {
-    throw new Error(`${fieldName} is required`);
+  if (
+    response.status === 401 &&
+    !String(errorMessage).toLowerCase().includes("unauthorized")
+  ) {
+    errorMessage = "Unauthorized";
   }
+
+  throw new Error(errorMessage);
 }
 
 function normalizeRoomPayload(roomData) {
@@ -144,6 +170,7 @@ function normalizeRoomPayload(roomData) {
   if (!payload.blockName) throw new Error("Block name is required");
   if (!payload.roomNumber) throw new Error("Room number is required");
   if (!payload.floorNumber) throw new Error("Floor number is required");
+
   if (
     payload.seatingCapacity === null ||
     Number.isNaN(payload.seatingCapacity) ||
@@ -151,12 +178,15 @@ function normalizeRoomPayload(roomData) {
   ) {
     throw new Error("Valid seating capacity is required");
   }
+
   if (!payload.availabilityTimings) {
     throw new Error("Availability timings are required");
   }
+
   if (!payload.facilities) throw new Error("Facilities are required");
   if (!payload.district) throw new Error("District is required");
   if (!payload.location) throw new Error("Location is required");
+
   if (Number.isNaN(payload.feePerHour) || payload.feePerHour < 0) {
     throw new Error("Valid fee per hour is required");
   }
@@ -269,18 +299,15 @@ export async function deleteRoom(roomId) {
 export async function getAvailableRooms(filters) {
   const params = buildQueryParams(filters);
 
-  const response = await fetch(
-    `${ROOM_BASE_URL}/available?${params.toString()}`,
-    {
-      method: "GET",
-      headers: getAuthHeaders(false),
-    }
-  );
+  const response = await fetch(`${ROOM_BASE_URL}/available?${params.toString()}`, {
+    method: "GET",
+    headers: getAuthHeaders(false),
+  });
 
   return handleResponse(response, "Failed to fetch available rooms");
 }
 
-/* ---------------- BOOKING APIs ---------------- */
+/* ---------------- BOOKING HELPERS ---------------- */
 
 function normalizeBookingPayload(bookingData) {
   if (!bookingData) {
@@ -290,26 +317,104 @@ function normalizeBookingPayload(bookingData) {
   validateUuid(bookingData.roomId, "Room ID");
   validateUuid(bookingData.userId, "User ID");
 
-  if (!bookingData.bookingDate) {
-    throw new Error("Booking date is required");
+  if (!bookingData.startAt) {
+    throw new Error("Start date and time is required");
   }
 
-  if (!bookingData.startTime) {
-    throw new Error("Start time is required");
+  if (!bookingData.endAt) {
+    throw new Error("End date and time is required");
   }
 
-  if (!bookingData.endTime) {
-    throw new Error("End time is required");
+  if (!isValidOffsetDateTime(bookingData.startAt)) {
+    throw new Error("Start date and time must be valid");
+  }
+
+  if (!isValidOffsetDateTime(bookingData.endAt)) {
+    throw new Error("End date and time must be valid");
+  }
+
+  const startMillis = Date.parse(bookingData.startAt);
+  const endMillis = Date.parse(bookingData.endAt);
+
+  if (endMillis <= startMillis) {
+    throw new Error("End time must be greater than start time");
+  }
+
+  const attendeeCount =
+    bookingData.attendeeCount !== undefined &&
+    bookingData.attendeeCount !== null &&
+    bookingData.attendeeCount !== ""
+      ? Number(bookingData.attendeeCount)
+      : null;
+
+  if (
+    attendeeCount !== null &&
+    (Number.isNaN(attendeeCount) || attendeeCount <= 0)
+  ) {
+    throw new Error("Attendee count must be greater than 0");
   }
 
   return {
-    roomId: bookingData.roomId,
-    userId: bookingData.userId,
-    bookingDate: bookingData.bookingDate,
-    startTime: bookingData.startTime,
-    endTime: bookingData.endTime,
+    roomId: bookingData.roomId.trim(),
+    userId: bookingData.userId.trim(),
+    startAt: bookingData.startAt,
+    endAt: bookingData.endAt,
+    purpose: bookingData.purpose?.trim() || null,
+    attendeeCount,
   };
 }
+
+function normalizeReschedulePayload(rescheduleData) {
+  if (!rescheduleData) {
+    throw new Error("Reschedule data is required");
+  }
+
+  if (!rescheduleData.startAt) {
+    throw new Error("Start date and time is required");
+  }
+
+  if (!rescheduleData.endAt) {
+    throw new Error("End date and time is required");
+  }
+
+  if (!isValidOffsetDateTime(rescheduleData.startAt)) {
+    throw new Error("Start date and time must be valid");
+  }
+
+  if (!isValidOffsetDateTime(rescheduleData.endAt)) {
+    throw new Error("End date and time must be valid");
+  }
+
+  const startMillis = Date.parse(rescheduleData.startAt);
+  const endMillis = Date.parse(rescheduleData.endAt);
+
+  if (endMillis <= startMillis) {
+    throw new Error("End time must be greater than start time");
+  }
+
+  const attendeeCount =
+    rescheduleData.attendeeCount !== undefined &&
+    rescheduleData.attendeeCount !== null &&
+    rescheduleData.attendeeCount !== ""
+      ? Number(rescheduleData.attendeeCount)
+      : null;
+
+  if (
+    attendeeCount !== null &&
+    (Number.isNaN(attendeeCount) || attendeeCount <= 0)
+  ) {
+    throw new Error("Attendee count must be greater than 0");
+  }
+
+  return {
+    startAt: rescheduleData.startAt,
+    endAt: rescheduleData.endAt,
+    purpose: rescheduleData.purpose?.trim() || null,
+    attendeeCount,
+  };
+}
+
+/* ---------------- BOOKING APIs ---------------- */
 
 export async function bookRoom(bookingData) {
   const payload = normalizeBookingPayload(bookingData);
@@ -346,6 +451,15 @@ export async function getBookingById(bookingId) {
   return handleResponse(response, "Failed to fetch booking");
 }
 
+export async function getAllBookings() {
+  const response = await fetch(BOOKING_BASE_URL, {
+    method: "GET",
+    headers: getAuthHeaders(false),
+  });
+
+  return handleResponse(response, "Failed to fetch all bookings");
+}
+
 export async function getBookingsByUserId(userId) {
   validateUuid(userId, "User ID");
 
@@ -355,6 +469,10 @@ export async function getBookingsByUserId(userId) {
   });
 
   return handleResponse(response, "Failed to fetch user bookings");
+}
+
+export async function getUserBookings(userId) {
+  return getBookingsByUserId(userId);
 }
 
 export async function getCurrentBookings(userId) {
@@ -390,6 +508,26 @@ export async function getBookingHistory(userId) {
   return handleResponse(response, "Failed to fetch booking history");
 }
 
+export async function getBookingsByStatus(status) {
+  if (!status || typeof status !== "string" || !status.trim()) {
+    throw new Error("Booking status is required");
+  }
+
+  const response = await fetch(
+    `${BOOKING_BASE_URL}/status/${encodeURIComponent(status.trim())}`,
+    {
+      method: "GET",
+      headers: getAuthHeaders(false),
+    }
+  );
+
+  return handleResponse(response, "Failed to fetch bookings by status");
+}
+
+export async function getPendingBookings() {
+  return getBookingsByStatus("PENDING");
+}
+
 export async function updateBookingStatus(bookingId, status) {
   validateUuid(bookingId, "Booking ID");
 
@@ -408,13 +546,17 @@ export async function updateBookingStatus(bookingId, status) {
   return handleResponse(response, "Failed to update booking status");
 }
 
-export async function approveBooking(bookingId) {
+export async function approveBooking(bookingId, approvedBy) {
   validateUuid(bookingId, "Booking ID");
+  validateUuid(approvedBy, "Approved by");
 
-  const response = await fetch(`${BOOKING_BASE_URL}/${bookingId}/approve`, {
-    method: "PUT",
-    headers: getAuthHeaders(false),
-  });
+  const response = await fetch(
+    `${BOOKING_BASE_URL}/${bookingId}/approve?approvedBy=${encodeURIComponent(approvedBy)}`,
+    {
+      method: "PUT",
+      headers: getAuthHeaders(false),
+    }
+  );
 
   return handleResponse(response, "Failed to approve booking");
 }
@@ -455,26 +597,12 @@ export async function completeBooking(bookingId) {
 export async function rescheduleBooking(bookingId, rescheduleData) {
   validateUuid(bookingId, "Booking ID");
 
-  if (!rescheduleData?.bookingDate) {
-    throw new Error("Booking date is required");
-  }
-
-  if (!rescheduleData?.startTime) {
-    throw new Error("Start time is required");
-  }
-
-  if (!rescheduleData?.endTime) {
-    throw new Error("End time is required");
-  }
+  const payload = normalizeReschedulePayload(rescheduleData);
 
   const response = await fetch(`${BOOKING_BASE_URL}/${bookingId}/reschedule`, {
     method: "PUT",
     headers: getAuthHeaders(true),
-    body: JSON.stringify({
-      bookingDate: rescheduleData.bookingDate,
-      startTime: rescheduleData.startTime,
-      endTime: rescheduleData.endTime,
-    }),
+    body: JSON.stringify(payload),
   });
 
   return handleResponse(response, "Failed to reschedule booking");
@@ -489,4 +617,28 @@ export async function deleteBooking(bookingId) {
   });
 
   return handleResponse(response, "Failed to delete booking");
+}
+
+export async function downloadBookingHistoryPdf(userId) {
+  const token = localStorage.getItem("token");
+
+  if (!token) {
+    throw new Error("Authentication token not found");
+  }
+
+  const response = await fetch(
+    `http://localhost:8080/api/bookings/user/${userId}/history/download/pdf`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to download booking history PDF: ${response.status}`);
+  }
+
+  return response.blob();
 }

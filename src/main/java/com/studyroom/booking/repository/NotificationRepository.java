@@ -8,7 +8,9 @@ import java.util.UUID;
 
 public interface NotificationRepository extends JpaRepository<Notification, Long> {
 
-    List<Notification> findByUserIdOrderByCreatedAtDesc(UUID userId);
+    // Get all notifications for a user (latest first)
+    List<Notification> findByUser_IdOrderByCreatedAtDesc(UUID userId);
 
-    long countByUserIdAndReadFalse(UUID userId);
+    // Count unread notifications
+    long countByUser_IdAndReadFalse(UUID userId);
 }

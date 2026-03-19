@@ -139,10 +139,20 @@ export default function ManageStudyRooms() {
     }
   };
 
-  const toAbsoluteImageUrl = (url) => {
-    if (!url) return "";
-    if (url.startsWith("http://") || url.startsWith("https://")) return url;
-    return `${API_BASE_URL}${url}`;
+  const normalizeImagePath = (url) => {
+    if (!url || typeof url !== "string") return "";
+
+    const cleaned = url.trim().replace(/\\/g, "/");
+
+    if (cleaned.startsWith("http://") || cleaned.startsWith("https://")) {
+      return cleaned;
+    }
+
+    if (cleaned.startsWith("/")) {
+      return `${API_BASE_URL}${cleaned}`;
+    }
+
+    return `${API_BASE_URL}/${cleaned}`;
   };
 
   const fetchRooms = async () => {
@@ -358,32 +368,51 @@ export default function ManageStudyRooms() {
   const extractRoomImages = (room) => {
     if (!room) return [];
 
-    if (Array.isArray(room.images)) {
-      return room.images
-        .map((img) => {
-          if (typeof img === "string") return toAbsoluteImageUrl(img);
-          return toAbsoluteImageUrl(img?.imageUrl || img?.url || img?.path || "");
-        })
-        .filter(Boolean);
-    }
+    const urls = [];
 
-    if (Array.isArray(room.imageUrls)) {
-      return room.imageUrls.map(toAbsoluteImageUrl).filter(Boolean);
+    if (Array.isArray(room.images)) {
+      room.images.forEach((img) => {
+        if (typeof img === "string") {
+          urls.push(normalizeImagePath(img));
+        } else if (img) {
+          urls.push(
+            normalizeImagePath(
+              img.imageUrl || img.url || img.path || img.image || ""
+            )
+          );
+        }
+      });
     }
 
     if (Array.isArray(room.roomImages)) {
-      return room.roomImages
-        .map((img) => {
-          if (typeof img === "string") return toAbsoluteImageUrl(img);
-          return toAbsoluteImageUrl(img?.imageUrl || img?.url || img?.path || "");
-        })
-        .filter(Boolean);
+      room.roomImages.forEach((img) => {
+        if (typeof img === "string") {
+          urls.push(normalizeImagePath(img));
+        } else if (img) {
+          urls.push(
+            normalizeImagePath(
+              img.imageUrl || img.url || img.path || img.image || ""
+            )
+          );
+        }
+      });
     }
 
-    if (room.imageUrl) return [toAbsoluteImageUrl(room.imageUrl)];
-    if (room.thumbnailUrl) return [toAbsoluteImageUrl(room.thumbnailUrl)];
+    if (Array.isArray(room.imageUrls)) {
+      room.imageUrls.forEach((img) => {
+        urls.push(normalizeImagePath(img));
+      });
+    }
 
-    return [];
+    if (room.imageUrl) {
+      urls.push(normalizeImagePath(room.imageUrl));
+    }
+
+    if (room.thumbnailUrl) {
+      urls.push(normalizeImagePath(room.thumbnailUrl));
+    }
+
+    return [...new Set(urls.filter(Boolean))];
   };
 
   const getPrimaryImage = (room) => {
@@ -471,6 +500,28 @@ export default function ManageStudyRooms() {
       opacity: 0,
       backgroundPosition: "center",
     }));
+  };
+
+  const handleImageError = (e) => {
+    e.target.style.display = "none";
+    const parent = e.target.parentElement;
+    if (parent && !parent.querySelector(".image-error-placeholder")) {
+      const placeholder = document.createElement("div");
+      placeholder.className = "image-error-placeholder";
+      placeholder.innerText = "Image not available";
+      Object.assign(placeholder.style, {
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "#64748b",
+        fontWeight: "700",
+        fontSize: "15px",
+        background: "#f1f5f9",
+      });
+      parent.appendChild(placeholder);
+    }
   };
 
   const previewCountText = useMemo(() => {
@@ -736,6 +787,7 @@ export default function ManageStudyRooms() {
                           src={primaryImage}
                           alt={`${room.blockName} ${room.roomNumber}`}
                           style={styles.cardImage}
+                          onError={handleImageError}
                         />
                         {images.length > 1 && (
                           <div style={styles.imageCountBadge}>
@@ -851,6 +903,7 @@ export default function ManageStudyRooms() {
                         src={img}
                         alt={`Thumbnail ${index + 1}`}
                         style={styles.verticalThumbnail}
+                        onError={handleImageError}
                       />
                     </div>
                   ))}
@@ -877,6 +930,7 @@ export default function ManageStudyRooms() {
                     src={galleryImages[galleryIndex]}
                     alt={`Room ${galleryIndex + 1}`}
                     style={styles.modalImage}
+                    onError={handleImageError}
                   />
 
                   <div
@@ -918,6 +972,7 @@ export default function ManageStudyRooms() {
                               : "1px solid #ddd",
                         }}
                         onClick={() => handleThumbnailClick(index)}
+                        onError={handleImageError}
                       />
                     ))}
                   </div>

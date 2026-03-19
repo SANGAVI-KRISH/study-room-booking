@@ -36,3 +36,7 @@ build/
 
 .env
 *.properties
+
+src/main/resources/application.properties
+
+*.uploads\rooms

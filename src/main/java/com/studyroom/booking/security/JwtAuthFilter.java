@@ -46,6 +46,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             return;
         }
 
+        // Skip uploaded images/files
+        if (path.startsWith("/uploads/")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         // Skip H2 console
         if (path.startsWith("/h2-console")) {
             filterChain.doFilter(request, response);

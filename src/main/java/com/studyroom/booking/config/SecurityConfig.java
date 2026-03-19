@@ -1,10 +1,7 @@
 package com.studyroom.booking.config;
 
-import java.util.List;
-
 import com.studyroom.booking.security.JwtAuthFilter;
 import com.studyroom.booking.service.CustomUserDetailsService;
-
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -25,6 +22,8 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.List;
 
 @Configuration
 @EnableMethodSecurity
@@ -73,11 +72,15 @@ public class SecurityConfig {
                 )
                 .authorizeHttpRequests(auth -> auth
 
-                        // Allow preflight requests
+                        // Preflight
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
                         // Public endpoints
-                        .requestMatchers("/api/auth/**", "/h2-console/**").permitAll()
+                        .requestMatchers(
+                                "/api/auth/**",
+                                "/h2-console/**",
+                                "/uploads/**"
+                        ).permitAll()
 
                         // Admin module
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
@@ -88,50 +91,47 @@ public class SecurityConfig {
                         // Student module
                         .requestMatchers("/api/student/**").hasAnyRole("STUDENT", "ADMIN")
 
-                        // =========================
                         // ROOM MODULE
-                        // =========================
-
-                        // View rooms - all logged-in users
                         .requestMatchers(HttpMethod.GET, "/api/rooms/**")
                         .hasAnyRole("ADMIN", "STAFF", "STUDENT")
 
-                        // Manage rooms - admin only
-                        .requestMatchers(HttpMethod.POST, "/api/rooms/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.PUT, "/api/rooms/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.DELETE, "/api/rooms/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/rooms/**")
+                        .hasRole("ADMIN")
 
-                        // =========================
+                        .requestMatchers(HttpMethod.PUT, "/api/rooms/**")
+                        .hasRole("ADMIN")
+
+                        .requestMatchers(HttpMethod.DELETE, "/api/rooms/**")
+                        .hasRole("ADMIN")
+
                         // BOOKING MODULE
-                        // =========================
-
-                        // Create booking - all logged-in users
-                        .requestMatchers(HttpMethod.POST, "/api/bookings/**")
-                        .hasAnyRole("ADMIN", "STAFF", "STUDENT")
-
-                        // View bookings - all logged-in users
                         .requestMatchers(HttpMethod.GET, "/api/bookings/**")
                         .hasAnyRole("ADMIN", "STAFF", "STUDENT")
 
-                        // Approve / Reject booking - admin only
-                        .requestMatchers(HttpMethod.PUT, "/api/bookings/*/approve").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.PUT, "/api/bookings/*/reject").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/bookings/**")
+                        .hasAnyRole("ADMIN", "STAFF", "STUDENT")
 
-                        // Cancel / reschedule / update status - logged-in users
+                        .requestMatchers(HttpMethod.PUT, "/api/bookings/*/approve")
+                        .hasRole("ADMIN")
+
+                        .requestMatchers(HttpMethod.PUT, "/api/bookings/*/reject")
+                        .hasRole("ADMIN")
+
                         .requestMatchers(HttpMethod.PUT, "/api/bookings/**")
                         .hasAnyRole("ADMIN", "STAFF", "STUDENT")
 
-                        // Delete booking - logged-in users
                         .requestMatchers(HttpMethod.DELETE, "/api/bookings/**")
                         .hasAnyRole("ADMIN", "STAFF", "STUDENT")
 
-                        // Any other request must be authenticated
+                        // NOTIFICATION MODULE
+                        .requestMatchers("/api/notifications/**")
+                        .hasAnyRole("ADMIN", "STAFF", "STUDENT")
+
                         .anyRequest().authenticated()
                 )
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
-        // Allow H2 console frame
         http.headers(headers -> headers.frameOptions(frame -> frame.disable()));
 
         return http.build();
@@ -142,14 +142,21 @@ public class SecurityConfig {
 
         CorsConfiguration configuration = new CorsConfiguration();
 
-        configuration.setAllowedOrigins(List.of("http://localhost:5173"));
+        configuration.setAllowedOrigins(List.of(
+                "http://localhost:5173",
+                "http://127.0.0.1:5173"
+        ));
 
-        configuration.setAllowedMethods(
-                List.of("GET", "POST", "PUT", "DELETE", "OPTIONS")
-        );
+        configuration.setAllowedMethods(List.of(
+                "GET",
+                "POST",
+                "PUT",
+                "DELETE",
+                "OPTIONS"
+        ));
 
         configuration.setAllowedHeaders(List.of("*"));
-
+        configuration.setExposedHeaders(List.of("Authorization"));
         configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

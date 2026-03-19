@@ -16,6 +16,10 @@ import Unauthorized from "./pages/Unauthorized";
 import RoomAvailability from "./pages/RoomAvailability";
 import BookingHistory from "./pages/BookingHistory";
 import Notifications from "./pages/Notifications";
+import MyBookings from "./pages/MyBookings";
+import AdminBookingApproval from "./pages/AdminBookingApproval";
+
+const API_BASE_URL = "http://localhost:8080";
 
 /* ================= HOME PAGE ================= */
 
@@ -129,7 +133,7 @@ function LoginPage({ initialMode = "login" }) {
         navigate("/student");
       }
     }
-  }, [navigate]);
+  }, [navigate, initialMode]);
 
   const handleChange = (e) => {
     setFormData((prev) => ({
@@ -157,6 +161,8 @@ function LoginPage({ initialMode = "login" }) {
       navigate("/login");
     } else if (newMode === "register") {
       navigate("/register");
+    } else if (newMode === "forgot") {
+      navigate("/forgot-password");
     }
   };
 
@@ -172,7 +178,7 @@ function LoginPage({ initialMode = "login" }) {
   const getUrlAndPayload = () => {
     if (mode === "login") {
       return {
-        url: "http://localhost:8080/api/auth/login",
+        url: `${API_BASE_URL}/api/auth/login`,
         payload: {
           email: formData.email.trim(),
           password: formData.password,
@@ -182,9 +188,10 @@ function LoginPage({ initialMode = "login" }) {
 
     if (mode === "register") {
       return {
-        url: "http://localhost:8080/api/auth/register",
+        url: `${API_BASE_URL}/api/auth/register`,
         payload: {
           name: formData.name.trim(),
+          fullName: formData.name.trim(),
           email: formData.email.trim(),
           password: formData.password,
           role: formData.role,
@@ -193,12 +200,44 @@ function LoginPage({ initialMode = "login" }) {
     }
 
     return {
-      url: "http://localhost:8080/api/auth/forgot-password",
+      url: `${API_BASE_URL}/api/auth/forgot-password`,
       payload: {
         email: formData.email.trim(),
         newPassword: formData.newPassword,
       },
     };
+  };
+
+  const extractErrorMessage = (data, response) => {
+    if (typeof data === "string" && data.trim()) {
+      return data;
+    }
+
+    if (data?.message) {
+      return data.message;
+    }
+
+    if (data?.error) {
+      return data.error;
+    }
+
+    if (response.status === 401) {
+      return "Invalid email or password";
+    }
+
+    if (response.status === 403) {
+      return "Access denied";
+    }
+
+    if (response.status === 404) {
+      return "Requested API endpoint not found";
+    }
+
+    if (response.status >= 500) {
+      return "Server error occurred";
+    }
+
+    return "Something went wrong";
   };
 
   const handleSubmit = async (e) => {
@@ -209,6 +248,9 @@ function LoginPage({ initialMode = "login" }) {
 
     try {
       setLoading(true);
+
+      console.log("Submitting to:", url);
+      console.log("Payload:", payload);
 
       const response = await fetch(url, {
         method: "POST",
@@ -227,15 +269,25 @@ function LoginPage({ initialMode = "login" }) {
         data = await response.text();
       }
 
+      console.log("Response status:", response.status);
+      console.log("Response data:", data);
+
       if (response.ok) {
         if (mode === "login") {
           clearStoredAuth();
 
-          const token = data?.token ?? "";
-          const role = data?.role ?? "";
-          const email = data?.email ?? formData.email.trim();
-          const name = data?.name ?? data?.user?.name ?? "User";
-          const userId = data?.userId ?? data?.id ?? data?.user?.id ?? null;
+          const token = data?.token ?? data?.jwt ?? "";
+          const role = data?.role ?? data?.user?.role ?? "";
+          const email =
+            data?.email ?? data?.user?.email ?? formData.email.trim();
+          const name =
+            data?.name ??
+            data?.fullName ??
+            data?.user?.name ??
+            data?.user?.fullName ??
+            "User";
+          const userId =
+            data?.userId ?? data?.id ?? data?.user?.id ?? data?.user?.userId;
 
           if (!token) {
             setMessage("Login failed: token not returned from backend.");
@@ -249,7 +301,7 @@ function LoginPage({ initialMode = "login" }) {
 
           if (userId === null || userId === undefined) {
             setMessage(
-              "Login successful, but user ID was not returned from backend. Please update backend login response."
+              "Login successful, but user ID was not returned from backend."
             );
             return;
           }
@@ -284,7 +336,7 @@ function LoginPage({ initialMode = "login" }) {
           setMessage(
             typeof data === "string"
               ? data
-              : "Registration successful. Please login."
+              : data?.message || "Registration successful. Please login."
           );
           clearForm();
           navigate("/login");
@@ -300,11 +352,7 @@ function LoginPage({ initialMode = "login" }) {
           setMode("login");
         }
       } else {
-        if (typeof data === "string") {
-          setMessage(data);
-        } else {
-          setMessage(data?.message || "Something went wrong");
-        }
+        setMessage(extractErrorMessage(data, response));
       }
     } catch (error) {
       console.error("Error:", error);
@@ -317,7 +365,9 @@ function LoginPage({ initialMode = "login" }) {
   return (
     <div className="login-page-wrapper">
       <div className="login-topbar">
-        <div className="login-topbar-title">Smart Study Room Booking System</div>
+        <div className="login-topbar-title">
+          Smart Study Room Booking System
+        </div>
         <button className="btn btn-outline" onClick={() => navigate("/")}>
           Home
         </button>
@@ -507,7 +557,10 @@ export default function App() {
           path="/register"
           element={<LoginPage initialMode="register" />}
         />
-        <Route path="/forgot-password" element={<LoginPage initialMode="forgot" />} />
+        <Route
+          path="/forgot-password"
+          element={<LoginPage initialMode="forgot" />}
+        />
 
         <Route
           path="/admin"
@@ -555,10 +608,28 @@ export default function App() {
         />
 
         <Route
+          path="/my-bookings"
+          element={
+            <ProtectedRoute allowedRoles={["ADMIN", "STAFF", "STUDENT"]}>
+              <MyBookings />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/booking-history"
           element={
             <ProtectedRoute allowedRoles={["ADMIN", "STAFF", "STUDENT"]}>
               <BookingHistory />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/admin/booking-approval"
+          element={
+            <ProtectedRoute allowedRoles={["ADMIN", "STAFF"]}>
+              <AdminBookingApproval />
             </ProtectedRoute>
           }
         />

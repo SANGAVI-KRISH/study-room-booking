@@ -1,55 +1,108 @@
 package com.studyroom.booking.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.studyroom.booking.model.BookingStatus;
 
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.util.UUID;
 
 public class BookingResponse {
 
-    private Long bookingId;
-    private Long roomId;
+    private UUID bookingId;
+    private UUID roomId;
     private String roomName;
-    private Long userId;
+    private UUID userId;
     private String userName;
-    private LocalDate bookingDate;
-    private LocalTime startTime;
-    private LocalTime endTime;
+
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ssXXX")
+    private OffsetDateTime startAt;
+
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ssXXX")
+    private OffsetDateTime endAt;
+
+    private String purpose;
+    private Integer attendeeCount;
+    private long durationMinutes;
     private BookingStatus status;
-    private LocalDateTime createdAt;
+    private String checkinStatus;
+    private String cancellationReason;
+    private String qrToken;
+
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ssXXX")
+    private OffsetDateTime approvalTime;
+
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ssXXX")
+    private OffsetDateTime bookedAt;
+
+    private UUID approvedById;
+    private String approvedByName;
+
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ssXXX")
+    private OffsetDateTime createdAt;
+
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ssXXX")
+    private OffsetDateTime updatedAt;
 
     public BookingResponse() {
     }
 
-    public BookingResponse(Long bookingId, Long roomId, String roomName, Long userId, String userName,
-                           LocalDate bookingDate, LocalTime startTime, LocalTime endTime,
-                           BookingStatus status, LocalDateTime createdAt) {
+    public BookingResponse(
+            UUID bookingId,
+            UUID roomId,
+            String roomName,
+            UUID userId,
+            String userName,
+            OffsetDateTime startAt,
+            OffsetDateTime endAt,
+            String purpose,
+            Integer attendeeCount,
+            long durationMinutes,
+            BookingStatus status,
+            String checkinStatus,
+            String cancellationReason,
+            String qrToken,
+            OffsetDateTime approvalTime,
+            OffsetDateTime bookedAt,
+            UUID approvedById,
+            String approvedByName,
+            OffsetDateTime createdAt,
+            OffsetDateTime updatedAt
+    ) {
         this.bookingId = bookingId;
         this.roomId = roomId;
         this.roomName = roomName;
         this.userId = userId;
         this.userName = userName;
-        this.bookingDate = bookingDate;
-        this.startTime = startTime;
-        this.endTime = endTime;
+        this.startAt = startAt;
+        this.endAt = endAt;
+        this.purpose = purpose;
+        this.attendeeCount = attendeeCount;
+        this.durationMinutes = durationMinutes;
         this.status = status;
+        this.checkinStatus = checkinStatus;
+        this.cancellationReason = cancellationReason;
+        this.qrToken = qrToken;
+        this.approvalTime = approvalTime;
+        this.bookedAt = bookedAt;
+        this.approvedById = approvedById;
+        this.approvedByName = approvedByName;
         this.createdAt = createdAt;
+        this.updatedAt = updatedAt;
     }
 
-    public Long getBookingId() {
+    public UUID getBookingId() {
         return bookingId;
     }
 
-    public void setBookingId(Long bookingId) {
+    public void setBookingId(UUID bookingId) {
         this.bookingId = bookingId;
     }
 
-    public Long getRoomId() {
+    public UUID getRoomId() {
         return roomId;
     }
 
-    public void setRoomId(Long roomId) {
+    public void setRoomId(UUID roomId) {
         this.roomId = roomId;
     }
 
@@ -61,11 +114,11 @@ public class BookingResponse {
         this.roomName = roomName;
     }
 
-    public Long getUserId() {
+    public UUID getUserId() {
         return userId;
     }
 
-    public void setUserId(Long userId) {
+    public void setUserId(UUID userId) {
         this.userId = userId;
     }
 
@@ -77,28 +130,44 @@ public class BookingResponse {
         this.userName = userName;
     }
 
-    public LocalDate getBookingDate() {
-        return bookingDate;
+    public OffsetDateTime getStartAt() {
+        return startAt;
     }
 
-    public void setBookingDate(LocalDate bookingDate) {
-        this.bookingDate = bookingDate;
+    public void setStartAt(OffsetDateTime startAt) {
+        this.startAt = startAt;
     }
 
-    public LocalTime getStartTime() {
-        return startTime;
+    public OffsetDateTime getEndAt() {
+        return endAt;
     }
 
-    public void setStartTime(LocalTime startTime) {
-        this.startTime = startTime;
+    public void setEndAt(OffsetDateTime endAt) {
+        this.endAt = endAt;
     }
 
-    public LocalTime getEndTime() {
-        return endTime;
+    public String getPurpose() {
+        return purpose;
     }
 
-    public void setEndTime(LocalTime endTime) {
-        this.endTime = endTime;
+    public void setPurpose(String purpose) {
+        this.purpose = purpose;
+    }
+
+    public Integer getAttendeeCount() {
+        return attendeeCount;
+    }
+
+    public void setAttendeeCount(Integer attendeeCount) {
+        this.attendeeCount = attendeeCount;
+    }
+
+    public long getDurationMinutes() {
+        return durationMinutes;
+    }
+
+    public void setDurationMinutes(long durationMinutes) {
+        this.durationMinutes = durationMinutes;
     }
 
     public BookingStatus getStatus() {
@@ -109,11 +178,75 @@ public class BookingResponse {
         this.status = status;
     }
 
-    public LocalDateTime getCreatedAt() {
+    public String getCheckinStatus() {
+        return checkinStatus;
+    }
+
+    public void setCheckinStatus(String checkinStatus) {
+        this.checkinStatus = checkinStatus;
+    }
+
+    public String getCancellationReason() {
+        return cancellationReason;
+    }
+
+    public void setCancellationReason(String cancellationReason) {
+        this.cancellationReason = cancellationReason;
+    }
+
+    public String getQrToken() {
+        return qrToken;
+    }
+
+    public void setQrToken(String qrToken) {
+        this.qrToken = qrToken;
+    }
+
+    public OffsetDateTime getApprovalTime() {
+        return approvalTime;
+    }
+
+    public void setApprovalTime(OffsetDateTime approvalTime) {
+        this.approvalTime = approvalTime;
+    }
+
+    public OffsetDateTime getBookedAt() {
+        return bookedAt;
+    }
+
+    public void setBookedAt(OffsetDateTime bookedAt) {
+        this.bookedAt = bookedAt;
+    }
+
+    public UUID getApprovedById() {
+        return approvedById;
+    }
+
+    public void setApprovedById(UUID approvedById) {
+        this.approvedById = approvedById;
+    }
+
+    public String getApprovedByName() {
+        return approvedByName;
+    }
+
+    public void setApprovedByName(String approvedByName) {
+        this.approvedByName = approvedByName;
+    }
+
+    public OffsetDateTime getCreatedAt() {
         return createdAt;
     }
 
-    public void setCreatedAt(LocalDateTime createdAt) {
+    public void setCreatedAt(OffsetDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public OffsetDateTime getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void setUpdatedAt(OffsetDateTime updatedAt) {
+        this.updatedAt = updatedAt;
     }
 }

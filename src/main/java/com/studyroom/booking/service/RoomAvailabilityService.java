@@ -8,6 +8,8 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.List;
 
 @Service
@@ -15,6 +17,8 @@ public class RoomAvailabilityService {
 
     private final StudyRoomRepository studyRoomRepository;
     private final BookingRepository bookingRepository;
+
+    private static final ZoneId APP_ZONE = ZoneId.of("Asia/Kolkata");
 
     private static final List<BookingStatus> BLOCKING_STATUSES =
             List.of(BookingStatus.PENDING, BookingStatus.APPROVED);
@@ -48,16 +52,22 @@ public class RoomAvailabilityService {
             throw new RuntimeException("End time must be after start time");
         }
 
+        OffsetDateTime startAt = date.atTime(startTime).atZone(APP_ZONE).toOffsetDateTime();
+        OffsetDateTime endAt = date.atTime(endTime).atZone(APP_ZONE).toOffsetDateTime();
+
+        if (!startAt.isAfter(OffsetDateTime.now(APP_ZONE))) {
+            throw new RuntimeException("Start time must be in the future");
+        }
+
         List<StudyRoom> rooms = studyRoomRepository.findAll();
 
         return rooms.stream()
                 .filter(room -> !bookingRepository
-                        .existsByRoom_IdAndBookingDateAndStatusInAndStartTimeLessThanAndEndTimeGreaterThan(
+                        .existsByRoom_IdAndStatusInAndStartAtLessThanAndEndAtGreaterThan(
                                 room.getId(),
-                                date,
                                 BLOCKING_STATUSES,
-                                endTime,
-                                startTime
+                                endAt,
+                                startAt
                         ))
                 .filter(room ->
                         seatingCapacity == null ||

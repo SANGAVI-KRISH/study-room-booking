@@ -1,6 +1,8 @@
 package com.studyroom.booking.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
+
 import java.time.LocalDateTime;
 
 @Entity
@@ -13,6 +15,7 @@ public class Notification {
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "user_id", nullable = false)
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "password"})
     private User user;
 
     @Enumerated(EnumType.STRING)
@@ -28,7 +31,7 @@ public class Notification {
     @Column(name = "is_read", nullable = false)
     private boolean read = false;
 
-    @Column(name = "created_at", nullable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
     public Notification() {
@@ -51,6 +54,10 @@ public class Notification {
 
     public Long getId() {
         return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
     }
 
     public User getUser() {
@@ -99,5 +106,17 @@ public class Notification {
 
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+
+    @Override
+    public String toString() {
+        return "Notification{" +
+                "id=" + id +
+                ", type=" + type +
+                ", title='" + title + '\'' +
+                ", message='" + message + '\'' +
+                ", read=" + read +
+                ", createdAt=" + createdAt +
+                '}';
     }
 }
