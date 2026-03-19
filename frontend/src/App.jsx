@@ -19,7 +19,8 @@ import Notifications from "./pages/Notifications";
 import MyBookings from "./pages/MyBookings";
 import AdminBookingApproval from "./pages/AdminBookingApproval";
 import AdminReports from "./pages/AdminReports";
-
+import ManageTimeSlots from "./pages/ManageTimeSlots";
+import RoomSlots from "./pages/RoomSlots";
 const API_BASE_URL = "http://localhost:8080";
 
 /* ================= HOME PAGE ================= */
@@ -562,7 +563,8 @@ export default function App() {
           path="/forgot-password"
           element={<LoginPage initialMode="forgot" />}
         />
-
+        <Route path="/manage-time-slots" element={<ManageTimeSlots />} />
+        <Route path="/room-slots" element={<RoomSlots />} />
         <Route
           path="/admin"
           element={
@@ -580,7 +582,6 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-        <Route path="/admin/reports" element={<AdminReports />} />
         <Route path="/admin/reports" element={<AdminReports />} />
         <Route
           path="/student"

@@ -185,7 +185,31 @@ export default function AdminDashboard() {
             Go to Manage Rooms
           </Link>
         </div>
+        <div style={styles.card}>
+  <h3 style={styles.cardTitle}>Time Slot Management</h3>
+  <p style={styles.cardText}>
+    Configure room timings, slot duration, and maintenance blocks.
+  </p>
+  <button
+    style={styles.buttonAsButton}
+    onClick={() => navigate("/manage-time-slots")}
+  >
+    Manage Time Slots
+  </button>
+</div>
 
+<div style={styles.card}>
+  <h3 style={styles.cardTitle}>View Room Slots</h3>
+  <p style={styles.cardText}>
+    Check available time slots for rooms before booking.
+  </p>
+  <button
+    style={styles.buttonAsButton}
+    onClick={() => navigate("/room-slots")}
+  >
+    View Slots
+  </button>
+</div>
         <div style={styles.card}>
           <h3 style={styles.cardTitle}>Manage Users</h3>
           <p style={styles.cardText}>

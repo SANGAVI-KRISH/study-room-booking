@@ -23,6 +23,7 @@ public class BookingService {
     private final StudyRoomRepository studyRoomRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
+    private final TimeSlotService timeSlotService;
 
     private static final ZoneId APP_ZONE = ZoneId.of("Asia/Kolkata");
 
@@ -44,12 +45,14 @@ public class BookingService {
             BookingRepository bookingRepository,
             StudyRoomRepository studyRoomRepository,
             UserRepository userRepository,
-            NotificationService notificationService
+            NotificationService notificationService,
+            TimeSlotService timeSlotService
     ) {
         this.bookingRepository = bookingRepository;
         this.studyRoomRepository = studyRoomRepository;
         this.userRepository = userRepository;
         this.notificationService = notificationService;
+        this.timeSlotService = timeSlotService;
     }
 
     // ---------------- BASIC GET METHODS ----------------
@@ -281,6 +284,8 @@ public class BookingService {
             Integer attendeeCount
     ) {
         validateBookingInputs(roomId, userId, startAt, endAt, attendeeCount);
+
+        timeSlotService.validateBookingSlot(roomId, startAt, endAt);
 
         StudyRoom room = studyRoomRepository.findById(roomId)
                 .orElseThrow(() -> new RuntimeException("Room not found with id: " + roomId));
@@ -572,6 +577,8 @@ public class BookingService {
 
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new RuntimeException("Booking not found with id: " + bookingId));
+
+        timeSlotService.validateBookingSlot(booking.getRoom().getId(), startAt, endAt);
 
         if (booking.getStatus() == BookingStatus.REJECTED) {
             throw new RuntimeException("Rejected booking cannot be rescheduled");

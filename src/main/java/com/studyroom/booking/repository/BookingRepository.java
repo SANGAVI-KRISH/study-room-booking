@@ -147,12 +147,27 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
     long countByStartAtBetween(OffsetDateTime start, OffsetDateTime end);
 
-    long countByStatusAndStartAtBetween(BookingStatus status, OffsetDateTime start, OffsetDateTime end);
+    long countByStatusAndStartAtBetween(
+            BookingStatus status,
+            OffsetDateTime start,
+            OffsetDateTime end
+    );
 
     long countByStatusInAndStartAtBetween(
             List<BookingStatus> statuses,
             OffsetDateTime start,
             OffsetDateTime end
+    );
+
+    /**
+     * Used in Time Slot Management Module
+     * Get overlapping active bookings for a room within a time range
+     */
+    List<Booking> findByRoom_IdAndStartAtLessThanAndEndAtGreaterThanAndStatusIn(
+            UUID roomId,
+            OffsetDateTime endAt,
+            OffsetDateTime startAt,
+            List<BookingStatus> statuses
     );
 
     @Query("""
