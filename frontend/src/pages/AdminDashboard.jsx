@@ -1,11 +1,60 @@
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import NotificationBell from "../components/NotificationBell";
+import { getAdminDashboardStats } from "../api/roomApi";
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
 
   const name = localStorage.getItem("name") || "Admin";
   const role = localStorage.getItem("role");
+
+  const [dashboardStats, setDashboardStats] = useState({
+    totalRooms: 0,
+    totalUsers: 0,
+    totalBookings: 0,
+    activeBookings: 0,
+    cancelledBookings: 0,
+    mostBookedRoom: "No data",
+    peakBookingHour: "No data",
+    roomUsageTrends: [],
+  });
+
+  const [loadingStats, setLoadingStats] = useState(true);
+  const [statsError, setStatsError] = useState("");
+
+  useEffect(() => {
+    if (role === "ADMIN") {
+      loadDashboardStats();
+    }
+  }, [role]);
+
+  const loadDashboardStats = async () => {
+    try {
+      setLoadingStats(true);
+      setStatsError("");
+
+      const data = await getAdminDashboardStats();
+
+      setDashboardStats({
+        totalRooms: data?.totalRooms ?? 0,
+        totalUsers: data?.totalUsers ?? 0,
+        totalBookings: data?.totalBookings ?? 0,
+        activeBookings: data?.activeBookings ?? 0,
+        cancelledBookings: data?.cancelledBookings ?? 0,
+        mostBookedRoom: data?.mostBookedRoom || "No data",
+        peakBookingHour: data?.peakBookingHour || "No data",
+        roomUsageTrends: Array.isArray(data?.roomUsageTrends)
+          ? data.roomUsageTrends
+          : [],
+      });
+    } catch (error) {
+      console.error("Failed to load admin dashboard stats:", error);
+      setStatsError(error.message || "Failed to load dashboard statistics");
+    } finally {
+      setLoadingStats(false);
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem("user");
@@ -41,6 +90,93 @@ export default function AdminDashboard() {
         </div>
       </div>
 
+      {/* Dashboard Statistics Section */}
+      <div style={styles.section}>
+        <div style={styles.sectionHeader}>
+          <h2 style={styles.sectionTitle}>System Overview</h2>
+          <button style={styles.refreshButton} onClick={loadDashboardStats}>
+            Refresh
+          </button>
+        </div>
+
+        {loadingStats ? (
+          <div style={styles.loadingBox}>Loading dashboard statistics...</div>
+        ) : statsError ? (
+          <div style={styles.errorBox}>{statsError}</div>
+        ) : (
+          <>
+            <div style={styles.statsGrid}>
+              <div style={styles.statCard}>
+                <h3 style={styles.statTitle}>Total Rooms</h3>
+                <p style={styles.statValue}>{dashboardStats.totalRooms}</p>
+              </div>
+
+              <div style={styles.statCard}>
+                <h3 style={styles.statTitle}>Total Users</h3>
+                <p style={styles.statValue}>{dashboardStats.totalUsers}</p>
+              </div>
+
+              <div style={styles.statCard}>
+                <h3 style={styles.statTitle}>Total Bookings</h3>
+                <p style={styles.statValue}>{dashboardStats.totalBookings}</p>
+              </div>
+
+              <div style={styles.statCard}>
+                <h3 style={styles.statTitle}>Active Bookings</h3>
+                <p style={styles.statValue}>{dashboardStats.activeBookings}</p>
+              </div>
+
+              <div style={styles.statCard}>
+                <h3 style={styles.statTitle}>Cancelled Bookings</h3>
+                <p style={styles.statValue}>{dashboardStats.cancelledBookings}</p>
+              </div>
+
+              <div style={styles.infoCard}>
+                <h3 style={styles.statTitle}>Most Booked Room</h3>
+                <p style={styles.infoValue}>{dashboardStats.mostBookedRoom}</p>
+              </div>
+
+              <div style={styles.infoCard}>
+                <h3 style={styles.statTitle}>Peak Booking Hours</h3>
+                <p style={styles.infoValue}>{dashboardStats.peakBookingHour}</p>
+              </div>
+            </div>
+
+            <div style={styles.trendContainer}>
+              <h3 style={styles.trendTitle}>Room Usage Trends</h3>
+
+              {dashboardStats.roomUsageTrends.length === 0 ? (
+                <p style={styles.noDataText}>No room usage trend data available.</p>
+              ) : (
+                <div style={styles.tableWrapper}>
+                  <table style={styles.table}>
+                    <thead>
+                      <tr>
+                        <th style={styles.tableHeader}>Room Name</th>
+                        <th style={styles.tableHeader}>Booking Count</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dashboardStats.roomUsageTrends.map((trend, index) => (
+                        <tr key={index}>
+                          <td style={styles.tableCell}>
+                            {trend.roomName || "Unknown Room"}
+                          </td>
+                          <td style={styles.tableCell}>
+                            {trend.bookingCount ?? 0}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Existing Navigation Cards */}
       <div style={styles.cardContainer}>
         <div style={styles.card}>
           <h3 style={styles.cardTitle}>Manage Study Rooms</h3>
@@ -146,6 +282,129 @@ const styles = {
     margin: 0,
     color: "#555",
     fontSize: "18px",
+  },
+  section: {
+    marginTop: "30px",
+    marginBottom: "35px",
+    backgroundColor: "#ffffff",
+    borderRadius: "14px",
+    padding: "24px",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+  },
+  sectionHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "16px",
+    flexWrap: "wrap",
+    marginBottom: "20px",
+  },
+  sectionTitle: {
+    margin: 0,
+    color: "#222",
+    fontSize: "28px",
+    fontWeight: "700",
+  },
+  refreshButton: {
+    padding: "10px 16px",
+    backgroundColor: "#17a2b8",
+    color: "#fff",
+    border: "none",
+    borderRadius: "6px",
+    cursor: "pointer",
+    fontWeight: "600",
+  },
+  loadingBox: {
+    padding: "20px",
+    borderRadius: "10px",
+    backgroundColor: "#eef4ff",
+    color: "#1f4b99",
+    textAlign: "center",
+    fontWeight: "600",
+  },
+  errorBox: {
+    padding: "20px",
+    borderRadius: "10px",
+    backgroundColor: "#fdecea",
+    color: "#b42318",
+    textAlign: "center",
+    fontWeight: "600",
+  },
+  statsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: "20px",
+  },
+  statCard: {
+    backgroundColor: "#f8fbff",
+    borderRadius: "12px",
+    padding: "20px",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+    textAlign: "center",
+    border: "1px solid #e3eefc",
+  },
+  infoCard: {
+    backgroundColor: "#fffaf3",
+    borderRadius: "12px",
+    padding: "20px",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+    textAlign: "center",
+    border: "1px solid #f4e2b8",
+  },
+  statTitle: {
+    margin: "0 0 10px 0",
+    color: "#333",
+    fontSize: "18px",
+    fontWeight: "600",
+  },
+  statValue: {
+    margin: 0,
+    fontSize: "34px",
+    fontWeight: "700",
+    color: "#007bff",
+  },
+  infoValue: {
+    margin: 0,
+    fontSize: "18px",
+    fontWeight: "600",
+    color: "#8a5a00",
+    lineHeight: "1.5",
+  },
+  trendContainer: {
+    marginTop: "30px",
+  },
+  trendTitle: {
+    marginBottom: "14px",
+    color: "#222",
+    fontSize: "22px",
+    fontWeight: "700",
+  },
+  noDataText: {
+    color: "#666",
+    fontSize: "16px",
+  },
+  tableWrapper: {
+    overflowX: "auto",
+  },
+  table: {
+    width: "100%",
+    borderCollapse: "collapse",
+    backgroundColor: "#fff",
+    borderRadius: "10px",
+    overflow: "hidden",
+  },
+  tableHeader: {
+    backgroundColor: "#007bff",
+    color: "#fff",
+    padding: "14px",
+    textAlign: "left",
+    fontSize: "15px",
+  },
+  tableCell: {
+    padding: "14px",
+    borderBottom: "1px solid #e5e7eb",
+    color: "#333",
+    fontSize: "15px",
   },
   cardContainer: {
     display: "grid",

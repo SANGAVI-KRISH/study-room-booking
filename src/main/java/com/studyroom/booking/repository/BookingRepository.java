@@ -3,6 +3,7 @@ package com.studyroom.booking.repository;
 import com.studyroom.booking.model.Booking;
 import com.studyroom.booking.model.BookingStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.time.OffsetDateTime;
@@ -139,4 +140,32 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             OffsetDateTime startAt,
             UUID id
     );
+
+    long countByStatus(BookingStatus status);
+
+    long countByStatusIn(List<BookingStatus> statuses);
+
+    @Query("""
+        SELECT CONCAT(b.room.blockName, ' - ', b.room.roomNumber), COUNT(b)
+        FROM Booking b
+        GROUP BY b.room.blockName, b.room.roomNumber
+        ORDER BY COUNT(b) DESC
+    """)
+    List<Object[]> findMostBookedRoom();
+
+    @Query("""
+        SELECT hour(b.startAt), COUNT(b)
+        FROM Booking b
+        GROUP BY hour(b.startAt)
+        ORDER BY COUNT(b) DESC
+    """)
+    List<Object[]> findPeakBookingHours();
+
+    @Query("""
+        SELECT CONCAT(b.room.blockName, ' - ', b.room.roomNumber), COUNT(b)
+        FROM Booking b
+        GROUP BY b.room.blockName, b.room.roomNumber
+        ORDER BY COUNT(b) DESC
+    """)
+    List<Object[]> findRoomUsageTrends();
 }

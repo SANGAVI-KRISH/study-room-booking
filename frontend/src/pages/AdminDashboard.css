@@ -1,0 +1,82 @@
+.admin-dashboard-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+  font-family: Arial, sans-serif;
+}
+
+.dashboard-title {
+  font-size: 32px;
+  font-weight: bold;
+  margin-bottom: 8px;
+  color: #1f2937;
+}
+
+.dashboard-subtitle {
+  font-size: 16px;
+  color: #6b7280;
+  margin-bottom: 24px;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 20px;
+  margin-bottom: 32px;
+}
+
+.stat-card {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  text-align: center;
+}
+
+.stat-card h3 {
+  margin-bottom: 10px;
+  font-size: 18px;
+  color: #374151;
+}
+
+.stat-card p {
+  font-size: 28px;
+  font-weight: bold;
+  color: #111827;
+}
+
+.stat-card.wide {
+  grid-column: span 2;
+}
+
+.trend-section {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+}
+
+.trend-section h2 {
+  margin-bottom: 16px;
+  color: #1f2937;
+}
+
+.trend-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.trend-table th,
+.trend-table td {
+  border: 1px solid #e5e7eb;
+  padding: 12px;
+  text-align: left;
+}
+
+.trend-table th {
+  background: #f3f4f6;
+}
+
+.trend-table tr:nth-child(even) {
+  background: #f9fafb;
+}

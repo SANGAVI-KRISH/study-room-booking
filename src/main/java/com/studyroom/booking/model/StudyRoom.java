@@ -62,16 +62,18 @@ public class StudyRoom {
     public StudyRoom() {
     }
 
-    public StudyRoom(String blockName,
-                     String roomNumber,
-                     String floorNumber,
-                     Integer seatingCapacity,
-                     String availabilityTimings,
-                     String facilities,
-                     String district,
-                     String location,
-                     BigDecimal feePerHour,
-                     boolean approvalRequired) {
+    public StudyRoom(
+            String blockName,
+            String roomNumber,
+            String floorNumber,
+            Integer seatingCapacity,
+            String availabilityTimings,
+            String facilities,
+            String district,
+            String location,
+            BigDecimal feePerHour,
+            boolean approvalRequired
+    ) {
         this.blockName = blockName;
         this.roomNumber = roomNumber;
         this.floorNumber = floorNumber;

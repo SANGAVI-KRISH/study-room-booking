@@ -1,5 +1,6 @@
 const ROOM_BASE_URL = "http://localhost:8080/api/rooms";
 const BOOKING_BASE_URL = "http://localhost:8080/api/bookings";
+const ADMIN_DASHBOARD_BASE_URL = "http://localhost:8080/api/admin/dashboard";
 
 function getToken() {
   const token = localStorage.getItem("token");
@@ -299,10 +300,13 @@ export async function deleteRoom(roomId) {
 export async function getAvailableRooms(filters) {
   const params = buildQueryParams(filters);
 
-  const response = await fetch(`${ROOM_BASE_URL}/available?${params.toString()}`, {
-    method: "GET",
-    headers: getAuthHeaders(false),
-  });
+  const response = await fetch(
+    `${ROOM_BASE_URL}/available?${params.toString()}`,
+    {
+      method: "GET",
+      headers: getAuthHeaders(false),
+    }
+  );
 
   return handleResponse(response, "Failed to fetch available rooms");
 }
@@ -536,7 +540,9 @@ export async function updateBookingStatus(bookingId, status) {
   }
 
   const response = await fetch(
-    `${BOOKING_BASE_URL}/${bookingId}/status?status=${encodeURIComponent(status)}`,
+    `${BOOKING_BASE_URL}/${bookingId}/status?status=${encodeURIComponent(
+      status
+    )}`,
     {
       method: "PUT",
       headers: getAuthHeaders(false),
@@ -551,7 +557,9 @@ export async function approveBooking(bookingId, approvedBy) {
   validateUuid(approvedBy, "Approved by");
 
   const response = await fetch(
-    `${BOOKING_BASE_URL}/${bookingId}/approve?approvedBy=${encodeURIComponent(approvedBy)}`,
+    `${BOOKING_BASE_URL}/${bookingId}/approve?approvedBy=${encodeURIComponent(
+      approvedBy
+    )}`,
     {
       method: "PUT",
       headers: getAuthHeaders(false),
@@ -620,6 +628,8 @@ export async function deleteBooking(bookingId) {
 }
 
 export async function downloadBookingHistoryPdf(userId) {
+  validateUuid(userId, "User ID");
+
   const token = localStorage.getItem("token");
 
   if (!token) {
@@ -627,7 +637,7 @@ export async function downloadBookingHistoryPdf(userId) {
   }
 
   const response = await fetch(
-    `http://localhost:8080/api/bookings/user/${userId}/history/download/pdf`,
+    `${BOOKING_BASE_URL}/user/${userId}/history/download/pdf`,
     {
       method: "GET",
       headers: {
@@ -641,4 +651,15 @@ export async function downloadBookingHistoryPdf(userId) {
   }
 
   return response.blob();
+}
+
+/* ---------------- ADMIN DASHBOARD APIs ---------------- */
+
+export async function getAdminDashboardStats() {
+  const response = await fetch(ADMIN_DASHBOARD_BASE_URL, {
+    method: "GET",
+    headers: getAuthHeaders(false),
+  });
+
+  return handleResponse(response, "Failed to fetch admin dashboard stats");
 }

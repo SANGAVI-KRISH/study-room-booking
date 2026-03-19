@@ -13,10 +13,7 @@ import java.util.Date;
 @Component
 public class JwtUtil {
 
-    // Must be at least 32 characters for HS256
     private static final String SECRET_KEY = "mysecretkeymysecretkeymysecretkey12345";
-
-    // 1 day expiration
     private static final long JWT_EXPIRATION_MS = 24 * 60 * 60 * 1000;
 
     private SecretKey getSigningKey() {
@@ -54,11 +51,19 @@ public class JwtUtil {
 
     public boolean isTokenValid(String token) {
         try {
-            String email = extractEmail(token);
-            return email != null && !email.isBlank() && !isTokenExpired(token);
+            Claims claims = extractAllClaims(token);
+            String email = claims.getSubject();
+            Date expiration = claims.getExpiration();
+
+            System.out.println("JWT subject: " + email);
+            System.out.println("JWT expiration: " + expiration);
+
+            return email != null && !email.isBlank() && expiration != null && expiration.after(new Date());
         } catch (SecurityException e) {
+            System.out.println("JWT security exception: " + e.getMessage());
             return false;
         } catch (Exception e) {
+            System.out.println("JWT validation exception: " + e.getMessage());
             return false;
         }
     }

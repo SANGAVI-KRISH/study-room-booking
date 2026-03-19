@@ -8,8 +8,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/admin")
 public class AdminController {
 
-    @GetMapping("/dashboard")
-    public String adminDashboard() {
+    @GetMapping("/home")
+    public String adminHome() {
         return "Welcome Admin! Secure endpoint accessed.";
     }
 
