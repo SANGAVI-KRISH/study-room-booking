@@ -48,12 +48,29 @@ public class RoomAvailabilityService {
             throw new RuntimeException("Start time and end time are required");
         }
 
-        if (!endTime.isAfter(startTime)) {
-            throw new RuntimeException("End time must be after start time");
-        }
+        OffsetDateTime startAt = date.atTime(startTime)
+                .atZone(APP_ZONE)
+                .toOffsetDateTime();
 
-        OffsetDateTime startAt = date.atTime(startTime).atZone(APP_ZONE).toOffsetDateTime();
-        OffsetDateTime endAt = date.atTime(endTime).atZone(APP_ZONE).toOffsetDateTime();
+        OffsetDateTime endAt;
+
+        // Normal same-day case
+        if (endTime.isAfter(startTime)) {
+            endAt = date.atTime(endTime)
+                    .atZone(APP_ZONE)
+                    .toOffsetDateTime();
+        }
+        // Cross-midnight case: e.g. 16:00 -> 01:00 next day
+        else if (endTime.isBefore(startTime)) {
+            endAt = date.plusDays(1)
+                    .atTime(endTime)
+                    .atZone(APP_ZONE)
+                    .toOffsetDateTime();
+        }
+        // Same start and end not allowed
+        else {
+            throw new RuntimeException("Start time and end time cannot be the same");
+        }
 
         if (!startAt.isAfter(OffsetDateTime.now(APP_ZONE))) {
             throw new RuntimeException("Start time must be in the future");
@@ -71,18 +88,20 @@ public class RoomAvailabilityService {
                         ))
                 .filter(room ->
                         seatingCapacity == null ||
-                        (room.getSeatingCapacity() != null && room.getSeatingCapacity() >= seatingCapacity))
+                        (room.getSeatingCapacity() != null &&
+                         room.getSeatingCapacity() >= seatingCapacity))
                 .filter(room ->
                         district == null || district.isBlank() ||
-                        (room.getDistrict() != null && room.getDistrict().equalsIgnoreCase(district)))
+                        (room.getDistrict() != null &&
+                         room.getDistrict().equalsIgnoreCase(district)))
                 .filter(room ->
                         location == null || location.isBlank() ||
                         (room.getLocation() != null &&
-                                room.getLocation().toLowerCase().contains(location.toLowerCase())))
+                         room.getLocation().toLowerCase().contains(location.toLowerCase())))
                 .filter(room ->
                         facility == null || facility.isBlank() ||
                         (room.getFacilities() != null &&
-                                room.getFacilities().toLowerCase().contains(facility.toLowerCase())))
+                         room.getFacilities().toLowerCase().contains(facility.toLowerCase())))
                 .toList();
     }
 }

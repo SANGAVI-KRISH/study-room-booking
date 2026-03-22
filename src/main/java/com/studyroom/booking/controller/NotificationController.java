@@ -9,6 +9,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/notifications")
@@ -30,6 +31,12 @@ public class NotificationController {
         return ResponseEntity.ok(notificationService.getUserNotifications(user.getId()));
     }
 
+    @GetMapping("/my/unread")
+    public ResponseEntity<List<Notification>> getMyUnreadNotifications(Authentication authentication) {
+        User user = getAuthenticatedUser(authentication);
+        return ResponseEntity.ok(notificationService.getUnreadNotifications(user.getId()));
+    }
+
     @GetMapping("/my/unread-count")
     public ResponseEntity<Long> getUnreadCount(Authentication authentication) {
         User user = getAuthenticatedUser(authentication);
@@ -37,31 +44,59 @@ public class NotificationController {
     }
 
     @PutMapping("/{id}/read")
-    public ResponseEntity<Notification> markAsRead(@PathVariable Long id,
+    public ResponseEntity<Notification> markAsRead(@PathVariable UUID id,
                                                    Authentication authentication) {
         User user = getAuthenticatedUser(authentication);
 
-        Notification notification = notificationService.markAsRead(id);
+        Notification existing = notificationService.getNotificationById(id);
+        validateNotificationOwner(existing, user);
 
-        if (!notification.getUser().getId().equals(user.getId())) {
-            throw new RuntimeException("You are not allowed to update this notification");
-        }
-
-        return ResponseEntity.ok(notification);
+        Notification updated = notificationService.markAsRead(id);
+        return ResponseEntity.ok(updated);
     }
 
     @PutMapping("/{id}/unread")
-    public ResponseEntity<Notification> markAsUnread(@PathVariable Long id,
+    public ResponseEntity<Notification> markAsUnread(@PathVariable UUID id,
                                                      Authentication authentication) {
         User user = getAuthenticatedUser(authentication);
 
-        Notification notification = notificationService.markAsUnread(id);
+        Notification existing = notificationService.getNotificationById(id);
+        validateNotificationOwner(existing, user);
 
-        if (!notification.getUser().getId().equals(user.getId())) {
-            throw new RuntimeException("You are not allowed to update this notification");
+        Notification updated = notificationService.markAsUnread(id);
+        return ResponseEntity.ok(updated);
+    }
+
+    @PutMapping("/my/read-all")
+    public ResponseEntity<String> markAllAsRead(Authentication authentication) {
+        User user = getAuthenticatedUser(authentication);
+        notificationService.markAllAsRead(user.getId());
+        return ResponseEntity.ok("All notifications marked as read");
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<String> deleteNotification(@PathVariable UUID id,
+                                                     Authentication authentication) {
+        User user = getAuthenticatedUser(authentication);
+        notificationService.deleteNotificationForUser(id, user.getId());
+        return ResponseEntity.ok("Notification deleted successfully");
+    }
+
+    @DeleteMapping("/my/clear-all")
+    public ResponseEntity<String> clearAllNotifications(Authentication authentication) {
+        User user = getAuthenticatedUser(authentication);
+        notificationService.clearAllNotifications(user.getId());
+        return ResponseEntity.ok("All notifications cleared successfully");
+    }
+
+    private void validateNotificationOwner(Notification notification, User user) {
+        if (notification == null || notification.getUser() == null) {
+            throw new RuntimeException("Notification or notification user not found");
         }
 
-        return ResponseEntity.ok(notification);
+        if (!notification.getUser().getId().equals(user.getId())) {
+            throw new RuntimeException("You are not allowed to access this notification");
+        }
     }
 
     private User getAuthenticatedUser(Authentication authentication) {

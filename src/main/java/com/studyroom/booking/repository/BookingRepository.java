@@ -13,9 +13,17 @@ import java.util.UUID;
 @Repository
 public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
+    // ================= BASIC FIND METHODS =================
+
     List<Booking> findByRoom_Id(UUID roomId);
 
     List<Booking> findByRoom_IdOrderByStartAtAsc(UUID roomId);
+
+    List<Booking> findByRoom_IdAndStatus(UUID roomId, BookingStatus status);
+
+    List<Booking> findByRoom_IdAndStatusIn(UUID roomId, List<BookingStatus> statuses);
+
+    List<Booking> findByRoom_IdAndStatusInOrderByStartAtAsc(UUID roomId, List<BookingStatus> statuses);
 
     List<Booking> findByUser_Id(UUID userId);
 
@@ -25,9 +33,7 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
     List<Booking> findByStatusIn(List<BookingStatus> statuses);
 
-    List<Booking> findByRoom_IdAndStatus(UUID roomId, BookingStatus status);
-
-    List<Booking> findByRoom_IdAndStatusIn(UUID roomId, List<BookingStatus> statuses);
+    List<Booking> findByStatusAndReminderSentFalse(BookingStatus status);
 
     List<Booking> findByUser_IdAndStatus(UUID userId, BookingStatus status);
 
@@ -73,57 +79,29 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             List<BookingStatus> statuses
     );
 
-    List<Booking> findByStartAtBefore(OffsetDateTime dateTime);
-
-    List<Booking> findByEndAtBefore(OffsetDateTime dateTime);
-
-    List<Booking> findByStartAtGreaterThanEqual(OffsetDateTime dateTime);
-
-    List<Booking> findByUser_IdAndStartAtBefore(UUID userId, OffsetDateTime dateTime);
-
-    List<Booking> findByUser_IdAndStartAtBeforeOrderByStartAtDesc(UUID userId, OffsetDateTime dateTime);
-
-    List<Booking> findByUser_IdAndStartAtGreaterThanEqual(UUID userId, OffsetDateTime dateTime);
-
-    List<Booking> findByUser_IdAndStartAtGreaterThanEqualOrderByStartAtAsc(UUID userId, OffsetDateTime dateTime);
-
-    List<Booking> findByUser_IdAndStartAtGreaterThanEqualAndStatusIn(
-            UUID userId,
-            OffsetDateTime dateTime,
+    List<Booking> findByRoom_IdAndStartAtLessThanAndEndAtGreaterThanAndStatusIn(
+            UUID roomId,
+            OffsetDateTime endAt,
+            OffsetDateTime startAt,
             List<BookingStatus> statuses
     );
 
-    List<Booking> findByUser_IdAndStartAtGreaterThanEqualAndStatusInOrderByStartAtAsc(
+    List<Booking> findByUser_IdAndStartAtLessThanAndEndAtGreaterThanAndStatusIn(
             UUID userId,
-            OffsetDateTime dateTime,
+            OffsetDateTime endAt,
+            OffsetDateTime startAt,
             List<BookingStatus> statuses
     );
 
-    List<Booking> findByUser_IdAndStartAtBeforeAndStatusIn(
-            UUID userId,
-            OffsetDateTime dateTime,
-            List<BookingStatus> statuses
-    );
+    boolean existsByRoom_Id(UUID roomId);
 
-    List<Booking> findByUser_IdAndStartAtBeforeAndStatusInOrderByStartAtDesc(
-            UUID userId,
-            OffsetDateTime dateTime,
-            List<BookingStatus> statuses
-    );
+    boolean existsByRoom_IdAndStatusIn(UUID roomId, List<BookingStatus> statuses);
 
     boolean existsByRoom_IdAndStatusInAndStartAtLessThanAndEndAtGreaterThan(
             UUID roomId,
             List<BookingStatus> statuses,
             OffsetDateTime endAt,
             OffsetDateTime startAt
-    );
-
-    boolean existsByRoom_IdAndStatusInAndStartAtLessThanAndEndAtGreaterThanAndIdNot(
-            UUID roomId,
-            List<BookingStatus> statuses,
-            OffsetDateTime endAt,
-            OffsetDateTime startAt,
-            UUID id
     );
 
     boolean existsByUser_IdAndStatusInAndStartAtLessThanAndEndAtGreaterThan(
@@ -133,13 +111,7 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             OffsetDateTime startAt
     );
 
-    boolean existsByUser_IdAndStatusInAndStartAtLessThanAndEndAtGreaterThanAndIdNot(
-            UUID userId,
-            List<BookingStatus> statuses,
-            OffsetDateTime endAt,
-            OffsetDateTime startAt,
-            UUID id
-    );
+    // ================= COUNT METHODS =================
 
     long countByStatus(BookingStatus status);
 
@@ -153,82 +125,66 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             OffsetDateTime end
     );
 
-    long countByStatusInAndStartAtBetween(
-            List<BookingStatus> statuses,
-            OffsetDateTime start,
-            OffsetDateTime end
-    );
+    long countByRoom_Id(UUID roomId);
 
-    /**
-     * Used in Time Slot Management Module
-     * Get overlapping active bookings for a room within a time range
-     */
-    List<Booking> findByRoom_IdAndStartAtLessThanAndEndAtGreaterThanAndStatusIn(
-            UUID roomId,
-            OffsetDateTime endAt,
-            OffsetDateTime startAt,
-            List<BookingStatus> statuses
-    );
+    // ================= DASHBOARD / ANALYTICS =================
 
     @Query("""
-        SELECT CONCAT(b.room.blockName, ' - ', b.room.roomNumber), COUNT(b)
+        SELECT b.room.displayName, COUNT(b)
         FROM Booking b
-        WHERE b.status IN ('APPROVED', 'COMPLETED')
-        GROUP BY b.room.blockName, b.room.roomNumber
+        GROUP BY b.room.displayName
         ORDER BY COUNT(b) DESC
     """)
     List<Object[]> findMostBookedRoom();
 
-    @Query("""
-        SELECT hour(b.startAt), COUNT(b)
-        FROM Booking b
-        GROUP BY hour(b.startAt)
-        ORDER BY COUNT(b) DESC
-    """)
+    @Query(value = """
+        SELECT EXTRACT(HOUR FROM start_at) AS booking_hour, COUNT(id) AS booking_count
+        FROM bookings
+        GROUP BY EXTRACT(HOUR FROM start_at)
+        ORDER BY booking_count DESC
+    """, nativeQuery = true)
     List<Object[]> findPeakBookingHours();
 
     @Query("""
-        SELECT CONCAT(b.room.blockName, ' - ', b.room.roomNumber), COUNT(b)
+        SELECT b.room.displayName, COUNT(b)
         FROM Booking b
-        WHERE b.status IN ('APPROVED', 'COMPLETED')
-        GROUP BY b.room.blockName, b.room.roomNumber
+        GROUP BY b.room.displayName
+        ORDER BY COUNT(b) DESC
+    """)
+    List<Object[]> findRoomUsageTrend();
+
+    // ================= REPORT METHODS =================
+
+    @Query(value = """
+        SELECT
+            COALESCE(sr.display_name, 'Unknown Room') AS room_name,
+            COUNT(b.id) AS booking_count,
+            COALESCE(SUM(EXTRACT(EPOCH FROM (b.end_at - b.start_at)) / 3600), 0) AS total_hours
+        FROM bookings b
+        LEFT JOIN rooms sr ON b.room_id = sr.id
+        GROUP BY sr.display_name
+        ORDER BY booking_count DESC
+    """, nativeQuery = true)
+    List<Object[]> findRoomUtilizationReport();
+
+    @Query("""
+        SELECT
+            COALESCE(b.room.displayName, 'Unknown Room'),
+            COUNT(b)
+        FROM Booking b
+        GROUP BY b.room.displayName
         ORDER BY COUNT(b) DESC
     """)
     List<Object[]> findFrequentlyUsedRooms();
 
     @Query("""
-        SELECT CONCAT(b.room.blockName, ' - ', b.room.roomNumber),
-               COUNT(b),
-               SUM(function('TIMESTAMPDIFF', HOUR, b.startAt, b.endAt))
-        FROM Booking b
-        WHERE b.status IN ('APPROVED', 'COMPLETED')
-        GROUP BY b.room.blockName, b.room.roomNumber
-        ORDER BY COUNT(b) DESC
-    """)
-    List<Object[]> findRoomUtilizationReport();
-
-    @Query("""
-        SELECT b.user.name, b.user.email, COUNT(b)
+        SELECT
+            COALESCE(b.user.name, 'Unknown User'),
+            COALESCE(b.user.email, 'No Email'),
+            COUNT(b)
         FROM Booking b
         GROUP BY b.user.name, b.user.email
         ORDER BY COUNT(b) DESC
     """)
     List<Object[]> findUserActivityReport();
-
-    @Query("""
-        SELECT DATE(b.startAt), COUNT(b)
-        FROM Booking b
-        WHERE b.status IN ('APPROVED', 'COMPLETED')
-        GROUP BY DATE(b.startAt)
-        ORDER BY DATE(b.startAt)
-    """)
-    List<Object[]> findRoomUsageTrend();
-
-    @Query("""
-        SELECT b.status, COUNT(b)
-        FROM Booking b
-        WHERE b.status IN ('CANCELLED', 'AUTO_CANCELLED')
-        GROUP BY b.status
-    """)
-    List<Object[]> findCancellationAnalysis();
 }

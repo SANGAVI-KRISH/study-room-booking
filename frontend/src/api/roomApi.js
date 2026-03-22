@@ -2,15 +2,18 @@ const ROOM_BASE_URL = "http://localhost:8080/api/rooms";
 const BOOKING_BASE_URL = "http://localhost:8080/api/bookings";
 const ADMIN_DASHBOARD_BASE_URL = "http://localhost:8080/api/admin/dashboard";
 const REPORT_BASE_URL = "http://localhost:8080/api/reports";
+const TIME_SLOT_BASE_URL = "http://localhost:8080/api/time-slots";
+
+/* ---------------- AUTH HELPERS ---------------- */
 
 function getToken() {
   const token = localStorage.getItem("token");
 
-  if (!token) {
+  if (!token || token === "null" || token === "undefined") {
     throw new Error("User not authenticated");
   }
 
-  return token;
+  return token.trim();
 }
 
 function getAuthHeaders(isJson = true) {
@@ -19,6 +22,21 @@ function getAuthHeaders(isJson = true) {
   const headers = {
     Authorization: `Bearer ${token}`,
   };
+
+  if (isJson) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  return headers;
+}
+
+function getOptionalAuthHeaders(isJson = true) {
+  const token = localStorage.getItem("token");
+  const headers = {};
+
+  if (token && token !== "null" && token !== "undefined" && token.trim()) {
+    headers.Authorization = `Bearer ${token.trim()}`;
+  }
 
   if (isJson) {
     headers["Content-Type"] = "application/json";
@@ -46,56 +64,71 @@ function validateUuid(value, fieldName) {
   }
 }
 
-function isValidOffsetDateTime(value) {
-  if (typeof value !== "string" || !value.trim()) return false;
-  return !Number.isNaN(Date.parse(value));
+function isNonEmptyString(value) {
+  return typeof value === "string" && value.trim() !== "";
 }
 
-function buildQueryParams(filters) {
+function isValidDateTimeString(value) {
+  if (!isNonEmptyString(value)) return false;
+  const d = new Date(value);
+  return !Number.isNaN(d.getTime());
+}
+
+/* ---------------- QUERY HELPERS ---------------- */
+
+function appendParam(params, key, value) {
+  if (value !== undefined && value !== null && String(value).trim() !== "") {
+    params.append(key, String(value).trim());
+  }
+}
+
+function buildQueryParams(filters = {}) {
   const params = new URLSearchParams();
 
-  if (!filters?.date) {
-    throw new Error("Date is required");
+  appendParam(params, "date", filters.date);
+  appendParam(params, "startTime", filters.startTime);
+  appendParam(params, "endTime", filters.endTime);
+  appendParam(params, "district", filters.district);
+  appendParam(params, "location", filters.location);
+  appendParam(params, "time", filters.time);
+  appendParam(params, "roomId", filters.roomId);
+
+  if (filters.facility) {
+    appendParam(params, "facility", filters.facility);
   }
 
-  if (!filters?.startTime) {
-    throw new Error("Start time is required");
+  if (filters.facilities) {
+    appendParam(params, "facility", filters.facilities);
   }
-
-  if (!filters?.endTime) {
-    throw new Error("End time is required");
-  }
-
-  params.append("date", filters.date);
-  params.append("startTime", filters.startTime);
-  params.append("endTime", filters.endTime);
 
   if (
     filters.seatingCapacity !== undefined &&
     filters.seatingCapacity !== null &&
-    filters.seatingCapacity !== ""
+    String(filters.seatingCapacity).trim() !== ""
   ) {
-    params.append("seatingCapacity", String(filters.seatingCapacity));
+    params.append("seatingCapacity", String(filters.seatingCapacity).trim());
   }
 
-  if (filters.district && filters.district.trim() !== "") {
-    params.append("district", filters.district.trim());
+  if (
+    filters.maxPrice !== undefined &&
+    filters.maxPrice !== null &&
+    String(filters.maxPrice).trim() !== ""
+  ) {
+    params.append("maxPrice", String(filters.maxPrice).trim());
   }
 
-  if (filters.location && filters.location.trim() !== "") {
-    params.append("location", filters.location.trim());
-  }
-
-  if (filters.facility && filters.facility.trim() !== "") {
-    params.append("facility", filters.facility.trim());
-  }
-
-  if (filters.facilities && filters.facilities.trim() !== "") {
-    params.append("facility", filters.facilities.trim());
+  if (
+    filters.pricePerHour !== undefined &&
+    filters.pricePerHour !== null &&
+    String(filters.pricePerHour).trim() !== ""
+  ) {
+    params.append("pricePerHour", String(filters.pricePerHour).trim());
   }
 
   return params;
 }
+
+/* ---------------- RESPONSE HELPER ---------------- */
 
 async function handleResponse(response, defaultMessage) {
   if (response.ok) {
@@ -141,12 +174,15 @@ async function handleResponse(response, defaultMessage) {
   throw new Error(errorMessage);
 }
 
+/* ---------------- ROOM PAYLOAD HELPERS ---------------- */
+
 function normalizeRoomPayload(roomData) {
   if (!roomData) {
     throw new Error("Room data is required");
   }
 
   const payload = {
+    displayName: roomData.displayName?.trim() || "",
     blockName: roomData.blockName?.trim() || "",
     roomNumber: roomData.roomNumber?.trim() || "",
     floorNumber: roomData.floorNumber?.trim() || "",
@@ -156,7 +192,6 @@ function normalizeRoomPayload(roomData) {
       roomData.seatingCapacity !== ""
         ? Number(roomData.seatingCapacity)
         : null,
-    availabilityTimings: roomData.availabilityTimings?.trim() || "",
     facilities: roomData.facilities?.trim() || "",
     district: roomData.district?.trim() || "",
     location: roomData.location?.trim() || "",
@@ -179,10 +214,6 @@ function normalizeRoomPayload(roomData) {
     payload.seatingCapacity <= 0
   ) {
     throw new Error("Valid seating capacity is required");
-  }
-
-  if (!payload.availabilityTimings) {
-    throw new Error("Availability timings are required");
   }
 
   if (!payload.facilities) throw new Error("Facilities are required");
@@ -211,12 +242,153 @@ function buildRoomFormData(roomData, imageFiles = []) {
   return formData;
 }
 
+/* ---------------- LOCAL FILTER HELPERS ---------------- */
+
+function normalizeArrayResponse(data) {
+  return Array.isArray(data) ? data : [];
+}
+
+function filterRoomsLocally(rooms, filters = {}) {
+  const roomList = normalizeArrayResponse(rooms);
+
+  return roomList.filter((room) => {
+    const districtMatch = filters.district
+      ? String(room.district || "").toLowerCase() ===
+        String(filters.district).trim().toLowerCase()
+      : true;
+
+    const locationSearch = String(filters.location || "").trim().toLowerCase();
+    const locationMatch = locationSearch
+      ? [
+          room.location,
+          room.displayName,
+          room.roomName,
+          room.blockName,
+          room.roomNumber,
+          room.floorBlock,
+          room.floorNumber,
+        ]
+          .filter(Boolean)
+          .some((value) =>
+            String(value).toLowerCase().includes(locationSearch)
+          )
+      : true;
+
+    const facilitiesSearch = String(
+      filters.facilities || filters.facility || ""
+    )
+      .trim()
+      .toLowerCase();
+
+    const facilitiesMatch = facilitiesSearch
+      ? String(room.facilities || "")
+          .toLowerCase()
+          .includes(facilitiesSearch)
+      : true;
+
+    const maxPriceMatch =
+      filters.maxPrice !== undefined &&
+      filters.maxPrice !== null &&
+      String(filters.maxPrice).trim() !== ""
+        ? Number(room.feePerHour || 0) <= Number(filters.maxPrice)
+        : true;
+
+    const roomMatch = filters.roomId
+      ? String(room.id) === String(filters.roomId)
+      : true;
+
+    return (
+      districtMatch &&
+      locationMatch &&
+      facilitiesMatch &&
+      maxPriceMatch &&
+      roomMatch
+    );
+  });
+}
+
+function normalizeSlotList(slots) {
+  return normalizeArrayResponse(slots)
+    .map((slot) => ({
+      ...slot,
+      remainingSeats:
+        slot?.remainingSeats !== undefined && slot?.remainingSeats !== null
+          ? Number(slot.remainingSeats)
+          : 0,
+    }))
+    .filter(
+      (slot) =>
+        slot &&
+        slot.startAt &&
+        slot.endAt &&
+        slot.isActive !== false &&
+        Number(slot.remainingSeats || 0) > 0
+    );
+}
+
+function isSameDate(dateTime, selectedDate) {
+  if (!selectedDate) return true;
+  if (!dateTime) return false;
+
+  const d = new Date(dateTime);
+  if (Number.isNaN(d.getTime())) return false;
+
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const localDate = `${year}-${month}-${day}`;
+
+  return localDate === String(selectedDate).trim();
+}
+
+function isTimeWithinSlot(slot, selectedTime) {
+  if (!selectedTime || !String(selectedTime).trim()) return true;
+  if (!slot?.startAt || !slot?.endAt) return false;
+
+  const start = new Date(slot.startAt);
+  const end = new Date(slot.endAt);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return false;
+  }
+
+  const [hh, mm] = String(selectedTime)
+    .trim()
+    .split(":")
+    .map(Number);
+
+  if (Number.isNaN(hh) || Number.isNaN(mm)) return false;
+
+  const selectedMinutes = hh * 60 + mm;
+  const startMinutes = start.getHours() * 60 + start.getMinutes();
+  const endMinutes = end.getHours() * 60 + end.getMinutes();
+
+  if (endMinutes >= startMinutes) {
+    return selectedMinutes >= startMinutes && selectedMinutes < endMinutes;
+  }
+
+  return selectedMinutes >= startMinutes || selectedMinutes < endMinutes;
+}
+
+function filterSlotsLocally(slots, filters = {}) {
+  const slotList = normalizeSlotList(slots);
+
+  return slotList.filter((slot) => {
+    const dateMatch = filters.date ? isSameDate(slot.startAt, filters.date) : true;
+    const timeMatch = filters.time
+      ? isTimeWithinSlot(slot, filters.time)
+      : true;
+
+    return dateMatch && timeMatch;
+  });
+}
+
 /* ---------------- ROOM APIs ---------------- */
 
 export async function getAllRooms() {
   const response = await fetch(ROOM_BASE_URL, {
     method: "GET",
-    headers: getAuthHeaders(false),
+    headers: getOptionalAuthHeaders(false),
   });
 
   return handleResponse(response, "Failed to fetch rooms");
@@ -227,7 +399,7 @@ export async function getRoomById(roomId) {
 
   const response = await fetch(`${ROOM_BASE_URL}/${roomId}`, {
     method: "GET",
-    headers: getAuthHeaders(false),
+    headers: getOptionalAuthHeaders(false),
   });
 
   return handleResponse(response, "Failed to fetch room");
@@ -250,9 +422,7 @@ export async function addRoomWithImages(roomData, imageFiles = []) {
 
   const response = await fetch(ROOM_BASE_URL, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${getToken()}`,
-    },
+    headers: getAuthHeaders(false),
     body: formData,
   });
 
@@ -278,9 +448,7 @@ export async function updateRoomWithImages(roomId, roomData, imageFiles = []) {
 
   const response = await fetch(`${ROOM_BASE_URL}/${roomId}`, {
     method: "PUT",
-    headers: {
-      Authorization: `Bearer ${getToken()}`,
-    },
+    headers: getAuthHeaders(false),
     body: formData,
   });
 
@@ -295,21 +463,159 @@ export async function deleteRoom(roomId) {
     headers: getAuthHeaders(false),
   });
 
-  return handleResponse(response, "Failed to delete room");
+  const message = await response.text();
+
+  if (!response.ok) {
+    throw new Error(message || "Failed to delete room");
+  }
+
+  return message || "Room deleted successfully";
 }
 
-export async function getAvailableRooms(filters) {
+export async function getAvailableRooms(filters = {}) {
   const params = buildQueryParams(filters);
+  const queryString = params.toString();
+  const url = queryString
+    ? `${ROOM_BASE_URL}/available?${queryString}`
+    : `${ROOM_BASE_URL}/available`;
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: getOptionalAuthHeaders(false),
+  });
+
+  return handleResponse(response, "Failed to fetch available rooms");
+}
+
+export async function searchRooms(filters = {}) {
+  const rooms = await getAllRooms();
+  return filterRoomsLocally(rooms, filters);
+}
+
+/* ---------------- TIME SLOT APIs ---------------- */
+
+export async function getAllTimeSlots() {
+  const response = await fetch(TIME_SLOT_BASE_URL, {
+    method: "GET",
+    headers: getOptionalAuthHeaders(false),
+  });
+
+  return handleResponse(response, "Failed to fetch time slots");
+}
+
+export async function getTimeSlotsByRoom(roomId) {
+  validateUuid(roomId, "Room ID");
+
+  const response = await fetch(`${TIME_SLOT_BASE_URL}/room/${roomId}`, {
+    method: "GET",
+    headers: getOptionalAuthHeaders(false),
+  });
+
+  return handleResponse(response, "Failed to fetch room time slots");
+}
+
+export async function getActiveTimeSlotsByRoom(roomId) {
+  validateUuid(roomId, "Room ID");
+
+  const response = await fetch(`${TIME_SLOT_BASE_URL}/room/${roomId}/active`, {
+    method: "GET",
+    headers: getOptionalAuthHeaders(false),
+  });
+
+  return handleResponse(response, "Failed to fetch active room time slots");
+}
+
+/*
+  GET /api/time-slots/{roomId}?date=yyyy-MM-dd
+  Returns AvailableSlotsResponse
+*/
+export async function getAvailableSlotsByRoomAndDate(roomId, date) {
+  validateUuid(roomId, "Room ID");
+
+  if (!date || !String(date).trim()) {
+    throw new Error("Date is required");
+  }
 
   const response = await fetch(
-    `${ROOM_BASE_URL}/available?${params.toString()}`,
+    `${TIME_SLOT_BASE_URL}/${roomId}?date=${encodeURIComponent(
+      String(date).trim()
+    )}`,
     {
       method: "GET",
-      headers: getAuthHeaders(false),
+      headers: getOptionalAuthHeaders(false),
     }
   );
 
-  return handleResponse(response, "Failed to fetch available rooms");
+  return handleResponse(response, "Failed to fetch available room slots");
+}
+
+/*
+  Returns only slot array from AvailableSlotsResponse
+*/
+export async function getAvailableSlotItemsByRoomAndDate(roomId, date) {
+  const response = await getAvailableSlotsByRoomAndDate(roomId, date);
+
+  if (Array.isArray(response)) {
+    return response;
+  }
+
+  if (Array.isArray(response?.slots)) {
+    return response.slots;
+  }
+
+  if (Array.isArray(response?.availableSlots)) {
+    return response.availableSlots;
+  }
+
+  if (Array.isArray(response?.timeSlots)) {
+    return response.timeSlots;
+  }
+
+  return [];
+}
+
+export async function getFilteredSlotsByRoom(roomId, filters = {}) {
+  const slots = await getTimeSlotsByRoom(roomId);
+  return filterSlotsLocally(slots, filters);
+}
+
+export async function searchRoomsWithAvailability(filters = {}) {
+  const matchedRooms = await searchRooms(filters);
+
+  if (!filters.date && !filters.time) {
+    return matchedRooms.map((room) => ({
+      room,
+      slots: [],
+    }));
+  }
+
+  const results = await Promise.all(
+    matchedRooms.map(async (room) => {
+      try {
+        let slots = [];
+
+        if (filters.date) {
+          slots = await getAvailableSlotItemsByRoomAndDate(room.id, filters.date);
+        } else {
+          slots = await getTimeSlotsByRoom(room.id);
+        }
+
+        const filteredSlots = filterSlotsLocally(slots, filters);
+
+        return {
+          room,
+          slots: filteredSlots,
+        };
+      } catch {
+        return {
+          room,
+          slots: [],
+        };
+      }
+    })
+  );
+
+  return results.filter((item) => item.slots.length > 0);
 }
 
 /* ---------------- BOOKING HELPERS ---------------- */
@@ -322,27 +628,35 @@ function normalizeBookingPayload(bookingData) {
   validateUuid(bookingData.roomId, "Room ID");
   validateUuid(bookingData.userId, "User ID");
 
-  if (!bookingData.startAt) {
-    throw new Error("Start date and time is required");
+  const hasTimeSlotId = isNonEmptyString(bookingData.timeSlotId);
+  const hasStartAt = isNonEmptyString(bookingData.startAt);
+  const hasEndAt = isNonEmptyString(bookingData.endAt);
+
+  if (hasTimeSlotId) {
+    validateUuid(bookingData.timeSlotId, "Time Slot ID");
   }
 
-  if (!bookingData.endAt) {
-    throw new Error("End date and time is required");
-  }
+  if (hasStartAt || hasEndAt) {
+    if (!hasStartAt || !hasEndAt) {
+      throw new Error("Both startAt and endAt are required");
+    }
 
-  if (!isValidOffsetDateTime(bookingData.startAt)) {
-    throw new Error("Start date and time must be valid");
-  }
+    if (!isValidDateTimeString(bookingData.startAt)) {
+      throw new Error("startAt must be a valid date-time");
+    }
 
-  if (!isValidOffsetDateTime(bookingData.endAt)) {
-    throw new Error("End date and time must be valid");
-  }
+    if (!isValidDateTimeString(bookingData.endAt)) {
+      throw new Error("endAt must be a valid date-time");
+    }
 
-  const startMillis = Date.parse(bookingData.startAt);
-  const endMillis = Date.parse(bookingData.endAt);
+    const start = new Date(bookingData.startAt);
+    const end = new Date(bookingData.endAt);
 
-  if (endMillis <= startMillis) {
-    throw new Error("End time must be greater than start time");
+    if (end <= start) {
+      throw new Error("endAt must be after startAt");
+    }
+  } else if (!hasTimeSlotId) {
+    throw new Error("Either Time Slot ID or start/end time is required");
   }
 
   const attendeeCount =
@@ -353,20 +667,30 @@ function normalizeBookingPayload(bookingData) {
       : null;
 
   if (
-    attendeeCount !== null &&
-    (Number.isNaN(attendeeCount) || attendeeCount <= 0)
+    attendeeCount === null ||
+    Number.isNaN(attendeeCount) ||
+    attendeeCount <= 0
   ) {
     throw new Error("Attendee count must be greater than 0");
   }
 
-  return {
+  const payload = {
     roomId: bookingData.roomId.trim(),
     userId: bookingData.userId.trim(),
-    startAt: bookingData.startAt,
-    endAt: bookingData.endAt,
     purpose: bookingData.purpose?.trim() || null,
     attendeeCount,
   };
+
+  if (hasTimeSlotId) {
+    payload.timeSlotId = bookingData.timeSlotId.trim();
+  }
+
+  if (hasStartAt && hasEndAt) {
+    payload.startAt = String(bookingData.startAt).trim();
+    payload.endAt = String(bookingData.endAt).trim();
+  }
+
+  return payload;
 }
 
 function normalizeReschedulePayload(rescheduleData) {
@@ -374,27 +698,35 @@ function normalizeReschedulePayload(rescheduleData) {
     throw new Error("Reschedule data is required");
   }
 
-  if (!rescheduleData.startAt) {
-    throw new Error("Start date and time is required");
+  const hasTimeSlotId = isNonEmptyString(rescheduleData.timeSlotId);
+  const hasStartAt = isNonEmptyString(rescheduleData.startAt);
+  const hasEndAt = isNonEmptyString(rescheduleData.endAt);
+
+  if (hasTimeSlotId) {
+    validateUuid(rescheduleData.timeSlotId, "Time Slot ID");
   }
 
-  if (!rescheduleData.endAt) {
-    throw new Error("End date and time is required");
-  }
+  if (hasStartAt || hasEndAt) {
+    if (!hasStartAt || !hasEndAt) {
+      throw new Error("Both startAt and endAt are required");
+    }
 
-  if (!isValidOffsetDateTime(rescheduleData.startAt)) {
-    throw new Error("Start date and time must be valid");
-  }
+    if (!isValidDateTimeString(rescheduleData.startAt)) {
+      throw new Error("startAt must be a valid date-time");
+    }
 
-  if (!isValidOffsetDateTime(rescheduleData.endAt)) {
-    throw new Error("End date and time must be valid");
-  }
+    if (!isValidDateTimeString(rescheduleData.endAt)) {
+      throw new Error("endAt must be a valid date-time");
+    }
 
-  const startMillis = Date.parse(rescheduleData.startAt);
-  const endMillis = Date.parse(rescheduleData.endAt);
+    const start = new Date(rescheduleData.startAt);
+    const end = new Date(rescheduleData.endAt);
 
-  if (endMillis <= startMillis) {
-    throw new Error("End time must be greater than start time");
+    if (end <= start) {
+      throw new Error("endAt must be after startAt");
+    }
+  } else if (!hasTimeSlotId) {
+    throw new Error("Either Time Slot ID or start/end time is required");
   }
 
   const attendeeCount =
@@ -411,22 +743,39 @@ function normalizeReschedulePayload(rescheduleData) {
     throw new Error("Attendee count must be greater than 0");
   }
 
-  return {
-    startAt: rescheduleData.startAt,
-    endAt: rescheduleData.endAt,
+  const payload = {
     purpose: rescheduleData.purpose?.trim() || null,
-    attendeeCount,
   };
+
+  if (attendeeCount !== null) {
+    payload.attendeeCount = attendeeCount;
+  }
+
+  if (hasTimeSlotId) {
+    payload.timeSlotId = rescheduleData.timeSlotId.trim();
+  }
+
+  if (hasStartAt && hasEndAt) {
+    payload.startAt = String(rescheduleData.startAt).trim();
+    payload.endAt = String(rescheduleData.endAt).trim();
+  }
+
+  return payload;
 }
 
 /* ---------------- BOOKING APIs ---------------- */
 
 export async function bookRoom(bookingData) {
   const payload = normalizeBookingPayload(bookingData);
+  const headers = getAuthHeaders(true);
+
+  console.log("BOOKING_BASE_URL:", BOOKING_BASE_URL);
+  console.log("Booking headers:", headers);
+  console.log("Booking payload:", payload);
 
   const response = await fetch(BOOKING_BASE_URL, {
     method: "POST",
-    headers: getAuthHeaders(true),
+    headers,
     body: JSON.stringify(payload),
   });
 
@@ -631,24 +980,18 @@ export async function deleteBooking(bookingId) {
 export async function downloadBookingHistoryPdf(userId) {
   validateUuid(userId, "User ID");
 
-  const token = localStorage.getItem("token");
-
-  if (!token) {
-    throw new Error("Authentication token not found");
-  }
-
   const response = await fetch(
     `${BOOKING_BASE_URL}/user/${userId}/history/download/pdf`,
     {
       method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers: getAuthHeaders(false),
     }
   );
 
   if (!response.ok) {
-    throw new Error(`Failed to download booking history PDF: ${response.status}`);
+    throw new Error(
+      `Failed to download booking history PDF: ${response.status}`
+    );
   }
 
   return response.blob();
@@ -709,7 +1052,10 @@ export async function getFrequentlyUsedRoomsReport() {
     headers: getAuthHeaders(false),
   });
 
-  return handleResponse(response, "Failed to fetch frequently used rooms report");
+  return handleResponse(
+    response,
+    "Failed to fetch frequently used rooms report"
+  );
 }
 
 export async function getCancellationAnalysisReport() {

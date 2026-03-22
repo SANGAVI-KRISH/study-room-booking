@@ -60,7 +60,6 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
@@ -82,6 +81,24 @@ public class SecurityConfig {
                                 "/uploads/**"
                         ).permitAll()
 
+                        // Public room read APIs
+                        .requestMatchers(HttpMethod.GET, "/api/rooms").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/rooms/**").permitAll()
+
+                        // Public time-slot read APIs
+                        .requestMatchers(HttpMethod.GET, "/api/time-slots").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/time-slots/**").permitAll()
+
+                        // Admin-only room write APIs
+                        .requestMatchers(HttpMethod.POST, "/api/rooms/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/rooms/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/rooms/**").hasRole("ADMIN")
+
+                        // Admin-only time-slot write APIs
+                        .requestMatchers(HttpMethod.POST, "/api/time-slots/admin/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/time-slots/admin/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/time-slots/admin/**").hasRole("ADMIN")
+
                         // Admin module
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
 
@@ -91,42 +108,21 @@ public class SecurityConfig {
                         // Student module
                         .requestMatchers("/api/student/**").hasAnyRole("STUDENT", "ADMIN")
 
-                        // ROOM MODULE
-                        .requestMatchers(HttpMethod.GET, "/api/rooms/**")
-                        .hasAnyRole("ADMIN", "STAFF", "STUDENT")
+                        // Booking module
+                        .requestMatchers(HttpMethod.GET, "/api/bookings/**").hasAnyRole("ADMIN", "STAFF", "STUDENT")
+                        .requestMatchers(HttpMethod.POST, "/api/bookings/**").hasAnyRole("ADMIN", "STAFF", "STUDENT")
+                        .requestMatchers(HttpMethod.PUT, "/api/bookings/*/approve").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/bookings/*/reject").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/bookings/**").hasAnyRole("ADMIN", "STAFF", "STUDENT")
+                        .requestMatchers(HttpMethod.DELETE, "/api/bookings/**").hasAnyRole("ADMIN", "STAFF", "STUDENT")
 
-                        .requestMatchers(HttpMethod.POST, "/api/rooms/**")
-                        .hasRole("ADMIN")
+                        // Notification module
+                        .requestMatchers("/api/notifications/**").hasAnyRole("ADMIN", "STAFF", "STUDENT")
 
-                        .requestMatchers(HttpMethod.PUT, "/api/rooms/**")
-                        .hasRole("ADMIN")
+                        // Reports
+                        .requestMatchers("/api/reports/**").hasAnyRole("ADMIN", "STAFF")
 
-                        .requestMatchers(HttpMethod.DELETE, "/api/rooms/**")
-                        .hasRole("ADMIN")
-
-                        // BOOKING MODULE
-                        .requestMatchers(HttpMethod.GET, "/api/bookings/**")
-                        .hasAnyRole("ADMIN", "STAFF", "STUDENT")
-
-                        .requestMatchers(HttpMethod.POST, "/api/bookings/**")
-                        .hasAnyRole("ADMIN", "STAFF", "STUDENT")
-
-                        .requestMatchers(HttpMethod.PUT, "/api/bookings/*/approve")
-                        .hasRole("ADMIN")
-
-                        .requestMatchers(HttpMethod.PUT, "/api/bookings/*/reject")
-                        .hasRole("ADMIN")
-
-                        .requestMatchers(HttpMethod.PUT, "/api/bookings/**")
-                        .hasAnyRole("ADMIN", "STAFF", "STUDENT")
-
-                        .requestMatchers(HttpMethod.DELETE, "/api/bookings/**")
-                        .hasAnyRole("ADMIN", "STAFF", "STUDENT")
-
-                        // NOTIFICATION MODULE
-                        .requestMatchers("/api/notifications/**")
-                        .hasAnyRole("ADMIN", "STAFF", "STUDENT")
-
+                        // Any other request
                         .anyRequest().authenticated()
                 )
                 .authenticationProvider(authenticationProvider())
@@ -139,7 +135,6 @@ public class SecurityConfig {
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
-
         CorsConfiguration configuration = new CorsConfiguration();
 
         configuration.setAllowedOrigins(List.of(

@@ -4,12 +4,11 @@ import com.studyroom.booking.model.RoomAvailability;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 public interface RoomAvailabilityRepository extends JpaRepository<RoomAvailability, UUID> {
 
-    Optional<RoomAvailability> findByRoom_IdAndDayOfWeek(UUID roomId, Integer dayOfWeek);
+    List<RoomAvailability> findAllByRoom_IdAndDayOfWeek(UUID roomId, Integer dayOfWeek);
 
     List<RoomAvailability> findByRoom_Id(UUID roomId);
 }

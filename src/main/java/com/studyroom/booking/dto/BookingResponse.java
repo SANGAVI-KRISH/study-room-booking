@@ -1,7 +1,6 @@
 package com.studyroom.booking.dto;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
-import com.studyroom.booking.model.BookingStatus;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -22,8 +21,9 @@ public class BookingResponse {
 
     private String purpose;
     private Integer attendeeCount;
+    private Double totalPrice;
     private long durationMinutes;
-    private BookingStatus status;
+    private String status;
     private String checkinStatus;
     private String cancellationReason;
     private String qrToken;
@@ -56,8 +56,9 @@ public class BookingResponse {
             OffsetDateTime endAt,
             String purpose,
             Integer attendeeCount,
+            Double totalPrice,
             long durationMinutes,
-            BookingStatus status,
+            String status,
             String checkinStatus,
             String cancellationReason,
             String qrToken,
@@ -77,6 +78,7 @@ public class BookingResponse {
         this.endAt = endAt;
         this.purpose = purpose;
         this.attendeeCount = attendeeCount;
+        this.totalPrice = totalPrice;
         this.durationMinutes = durationMinutes;
         this.status = status;
         this.checkinStatus = checkinStatus;
@@ -162,6 +164,14 @@ public class BookingResponse {
         this.attendeeCount = attendeeCount;
     }
 
+    public Double getTotalPrice() {
+        return totalPrice;
+    }
+
+    public void setTotalPrice(Double totalPrice) {
+        this.totalPrice = totalPrice;
+    }
+
     public long getDurationMinutes() {
         return durationMinutes;
     }
@@ -170,11 +180,11 @@ public class BookingResponse {
         this.durationMinutes = durationMinutes;
     }
 
-    public BookingStatus getStatus() {
+    public String getStatus() {
         return status;
     }
 
-    public void setStatus(BookingStatus status) {
+    public void setStatus(String status) {
         this.status = status;
     }
 

@@ -1,20 +1,15 @@
 package com.studyroom.booking.model;
 
 import jakarta.persistence.*;
+
 import java.time.LocalTime;
 import java.util.UUID;
 
 @Entity
-@Table(
-        name = "room_availability",
-        uniqueConstraints = {
-                @UniqueConstraint(columnNames = {"room_id", "day_of_week"})
-        }
-)
+@Table(name = "room_availability")
 public class RoomAvailability {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     @Column(columnDefinition = "uuid", updatable = false, nullable = false)
     private UUID id;
 
@@ -23,7 +18,7 @@ public class RoomAvailability {
     private StudyRoom room;
 
     @Column(name = "day_of_week", nullable = false)
-    private Integer dayOfWeek; // 0 to 6
+    private Integer dayOfWeek; // 0 = Sunday, 1 = Monday ... 6 = Saturday
 
     @Column(name = "open_time", nullable = false)
     private LocalTime openTime;
@@ -38,6 +33,19 @@ public class RoomAvailability {
     private Boolean isAvailable = true;
 
     public RoomAvailability() {
+    }
+
+    @PrePersist
+    public void prePersist() {
+        if (this.id == null) {
+            this.id = UUID.randomUUID();
+        }
+        if (this.slotDurationMins == null || this.slotDurationMins <= 0) {
+            this.slotDurationMins = 60;
+        }
+        if (this.isAvailable == null) {
+            this.isAvailable = true;
+        }
     }
 
     public UUID getId() {

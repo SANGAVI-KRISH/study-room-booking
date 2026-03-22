@@ -3,15 +3,17 @@ package com.studyroom.booking.model;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(name = "notifications")
 public class Notification {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @Column(columnDefinition = "uuid", updatable = false, nullable = false)
+    private UUID id;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "user_id", nullable = false)
@@ -31,8 +33,11 @@ public class Notification {
     @Column(name = "is_read", nullable = false)
     private boolean read = false;
 
+    @Column(name = "booking_id")
+    private UUID bookingId;
+
     @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    private OffsetDateTime createdAt;
 
     public Notification() {
     }
@@ -45,18 +50,27 @@ public class Notification {
         this.read = false;
     }
 
+    public Notification(User user, NotificationType type, String title, String message, UUID bookingId) {
+        this.user = user;
+        this.type = type;
+        this.title = title;
+        this.message = message;
+        this.bookingId = bookingId;
+        this.read = false;
+    }
+
     @PrePersist
     public void prePersist() {
         if (this.createdAt == null) {
-            this.createdAt = LocalDateTime.now();
+            this.createdAt = OffsetDateTime.now();
         }
     }
 
-    public Long getId() {
+    public UUID getId() {
         return id;
     }
 
-    public void setId(Long id) {
+    public void setId(UUID id) {
         this.id = id;
     }
 
@@ -100,11 +114,19 @@ public class Notification {
         this.read = read;
     }
 
-    public LocalDateTime getCreatedAt() {
+    public UUID getBookingId() {
+        return bookingId;
+    }
+
+    public void setBookingId(UUID bookingId) {
+        this.bookingId = bookingId;
+    }
+
+    public OffsetDateTime getCreatedAt() {
         return createdAt;
     }
 
-    public void setCreatedAt(LocalDateTime createdAt) {
+    public void setCreatedAt(OffsetDateTime createdAt) {
         this.createdAt = createdAt;
     }
 
@@ -112,10 +134,12 @@ public class Notification {
     public String toString() {
         return "Notification{" +
                 "id=" + id +
+                ", user=" + (user != null ? user.getId() : null) +
                 ", type=" + type +
                 ", title='" + title + '\'' +
                 ", message='" + message + '\'' +
                 ", read=" + read +
+                ", bookingId=" + bookingId +
                 ", createdAt=" + createdAt +
                 '}';
     }

@@ -5,8 +5,10 @@ import com.studyroom.booking.dto.BookingResponse;
 import com.studyroom.booking.dto.BookingSummaryResponse;
 import com.studyroom.booking.model.Booking;
 import com.studyroom.booking.model.BookingStatus;
+import com.studyroom.booking.model.TimeSlot;
 import com.studyroom.booking.service.BookingPdfService;
 import com.studyroom.booking.service.BookingService;
+import com.studyroom.booking.service.TimeSlotService;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -16,8 +18,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.Duration;
 import java.time.LocalDate;
-import java.time.OffsetDateTime;
-import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -32,76 +32,82 @@ public class BookingController {
 
     private final BookingService bookingService;
     private final BookingPdfService bookingPdfService;
-    private static final ZoneId APP_ZONE = ZoneId.of("Asia/Kolkata");
+    private final TimeSlotService timeSlotService;
 
-    public BookingController(BookingService bookingService, BookingPdfService bookingPdfService) {
+    public BookingController(
+            BookingService bookingService,
+            BookingPdfService bookingPdfService,
+            TimeSlotService timeSlotService
+    ) {
         this.bookingService = bookingService;
         this.bookingPdfService = bookingPdfService;
+        this.timeSlotService = timeSlotService;
     }
 
     @GetMapping
     public ResponseEntity<List<BookingResponse>> getAllBookings() {
-        return ResponseEntity.ok(
-                bookingService.getAllBookings()
-                        .stream()
-                        .map(this::mapToBookingResponse)
-                        .collect(Collectors.toList())
-        );
+        List<BookingResponse> responses = bookingService.getAllBookings()
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<BookingResponse> getBookingById(@PathVariable UUID id) {
-        return ResponseEntity.ok(mapToBookingResponse(bookingService.getBookingById(id)));
+        Booking booking = bookingService.getBookingById(id);
+        return ResponseEntity.ok(mapToBookingResponse(booking));
     }
 
     @GetMapping("/room/{roomId}")
     public ResponseEntity<List<BookingResponse>> getBookingsByRoomId(@PathVariable UUID roomId) {
-        return ResponseEntity.ok(
-                bookingService.getBookingsByRoomId(roomId)
-                        .stream()
-                        .map(this::mapToBookingResponse)
-                        .collect(Collectors.toList())
-        );
+        List<BookingResponse> responses = bookingService.getBookingsByRoomId(roomId)
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
     }
 
     @GetMapping("/user/{userId}")
     public ResponseEntity<List<BookingResponse>> getBookingsByUserId(@PathVariable UUID userId) {
-        return ResponseEntity.ok(
-                bookingService.getBookingsByUserId(userId)
-                        .stream()
-                        .map(this::mapToBookingResponse)
-                        .collect(Collectors.toList())
-        );
+        List<BookingResponse> responses = bookingService.getBookingsByUserId(userId)
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
     }
 
     @GetMapping("/user/{userId}/current")
     public ResponseEntity<List<BookingResponse>> getCurrentBookings(@PathVariable UUID userId) {
-        return ResponseEntity.ok(
-                bookingService.getCurrentBookings(userId)
-                        .stream()
-                        .map(this::mapToBookingResponse)
-                        .collect(Collectors.toList())
-        );
+        List<BookingResponse> responses = bookingService.getCurrentBookings(userId)
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
     }
 
     @GetMapping("/user/{userId}/past")
     public ResponseEntity<List<BookingResponse>> getPastBookings(@PathVariable UUID userId) {
-        return ResponseEntity.ok(
-                bookingService.getPastBookings(userId)
-                        .stream()
-                        .map(this::mapToBookingResponse)
-                        .collect(Collectors.toList())
-        );
+        List<BookingResponse> responses = bookingService.getPastBookings(userId)
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
     }
 
     @GetMapping("/user/{userId}/active")
     public ResponseEntity<List<BookingResponse>> getActiveCurrentBookings(@PathVariable UUID userId) {
-        return ResponseEntity.ok(
-                bookingService.getActiveCurrentBookings(userId)
-                        .stream()
-                        .map(this::mapToBookingResponse)
-                        .collect(Collectors.toList())
-        );
+        List<BookingResponse> responses = bookingService.getActiveCurrentBookings(userId)
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
     }
 
     @GetMapping("/date/{date}")
@@ -110,22 +116,22 @@ public class BookingController {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
             LocalDate date
     ) {
-        return ResponseEntity.ok(
-                bookingService.getBookingsByDate(date)
-                        .stream()
-                        .map(this::mapToBookingResponse)
-                        .collect(Collectors.toList())
-        );
+        List<BookingResponse> responses = bookingService.getBookingsByDate(date)
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
     }
 
     @GetMapping("/status/{status}")
     public ResponseEntity<List<BookingResponse>> getBookingsByStatus(@PathVariable BookingStatus status) {
-        return ResponseEntity.ok(
-                bookingService.getBookingsByStatus(status)
-                        .stream()
-                        .map(this::mapToBookingResponse)
-                        .collect(Collectors.toList())
-        );
+        List<BookingResponse> responses = bookingService.getBookingsByStatus(status)
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
     }
 
     @GetMapping("/room/{roomId}/date/{date}")
@@ -135,12 +141,12 @@ public class BookingController {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
             LocalDate date
     ) {
-        return ResponseEntity.ok(
-                bookingService.getBookingsByRoomIdAndDate(roomId, date)
-                        .stream()
-                        .map(this::mapToBookingResponse)
-                        .collect(Collectors.toList())
-        );
+        List<BookingResponse> responses = bookingService.getBookingsByRoomIdAndDate(roomId, date)
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
     }
 
     @GetMapping("/user/{userId}/status/{status}")
@@ -148,12 +154,12 @@ public class BookingController {
             @PathVariable UUID userId,
             @PathVariable BookingStatus status
     ) {
-        return ResponseEntity.ok(
-                bookingService.getBookingsByUserIdAndStatus(userId, status)
-                        .stream()
-                        .map(this::mapToBookingResponse)
-                        .collect(Collectors.toList())
-        );
+        List<BookingResponse> responses = bookingService.getBookingsByUserIdAndStatus(userId, status)
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
     }
 
     @GetMapping("/room/{roomId}/status/{status}")
@@ -161,12 +167,12 @@ public class BookingController {
             @PathVariable UUID roomId,
             @PathVariable BookingStatus status
     ) {
-        return ResponseEntity.ok(
-                bookingService.getBookingsByRoomIdAndStatus(roomId, status)
-                        .stream()
-                        .map(this::mapToBookingResponse)
-                        .collect(Collectors.toList())
-        );
+        List<BookingResponse> responses = bookingService.getBookingsByRoomIdAndStatus(roomId, status)
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
     }
 
     @GetMapping("/date/{date}/status/{status}")
@@ -176,102 +182,102 @@ public class BookingController {
             LocalDate date,
             @PathVariable BookingStatus status
     ) {
-        return ResponseEntity.ok(
-                bookingService.getBookingsByDateAndStatus(date, status)
-                        .stream()
-                        .map(this::mapToBookingResponse)
-                        .collect(Collectors.toList())
-        );
+        List<BookingResponse> responses = bookingService.getBookingsByDateAndStatus(date, status)
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
     }
 
     @GetMapping("/status/pending")
     public ResponseEntity<List<BookingResponse>> getPendingBookings() {
-        return ResponseEntity.ok(
-                bookingService.getPendingBookings()
-                        .stream()
-                        .map(this::mapToBookingResponse)
-                        .collect(Collectors.toList())
-        );
+        List<BookingResponse> responses = bookingService.getPendingBookings()
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
     }
 
     @GetMapping("/status/approved")
     public ResponseEntity<List<BookingResponse>> getApprovedBookings() {
-        return ResponseEntity.ok(
-                bookingService.getApprovedBookings()
-                        .stream()
-                        .map(this::mapToBookingResponse)
-                        .collect(Collectors.toList())
-        );
+        List<BookingResponse> responses = bookingService.getApprovedBookings()
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
     }
 
     @GetMapping("/status/rejected")
     public ResponseEntity<List<BookingResponse>> getRejectedBookings() {
-        return ResponseEntity.ok(
-                bookingService.getRejectedBookings()
-                        .stream()
-                        .map(this::mapToBookingResponse)
-                        .collect(Collectors.toList())
-        );
+        List<BookingResponse> responses = bookingService.getRejectedBookings()
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
     }
 
     @GetMapping("/status/cancelled")
     public ResponseEntity<List<BookingResponse>> getCancelledBookings() {
-        return ResponseEntity.ok(
-                bookingService.getCancelledBookings()
-                        .stream()
-                        .map(this::mapToBookingResponse)
-                        .collect(Collectors.toList())
-        );
+        List<BookingResponse> responses = bookingService.getCancelledBookings()
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
     }
 
     @GetMapping("/status/completed")
     public ResponseEntity<List<BookingResponse>> getCompletedBookings() {
-        return ResponseEntity.ok(
-                bookingService.getCompletedBookings()
-                        .stream()
-                        .map(this::mapToBookingResponse)
-                        .collect(Collectors.toList())
-        );
+        List<BookingResponse> responses = bookingService.getCompletedBookings()
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
     }
 
     @GetMapping("/user/{userId}/history")
     public ResponseEntity<List<BookingResponse>> getBookingHistory(@PathVariable UUID userId) {
-        return ResponseEntity.ok(
-                bookingService.getBookingHistory(userId)
-                        .stream()
-                        .map(this::mapToBookingResponse)
-                        .collect(Collectors.toList())
-        );
+        List<BookingResponse> responses = bookingService.getBookingHistory(userId)
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
     }
 
     @GetMapping("/user/{userId}/history/completed")
     public ResponseEntity<List<BookingResponse>> getCompletedBookingsByUserId(@PathVariable UUID userId) {
-        return ResponseEntity.ok(
-                bookingService.getCompletedBookingsByUserId(userId)
-                        .stream()
-                        .map(this::mapToBookingResponse)
-                        .collect(Collectors.toList())
-        );
+        List<BookingResponse> responses = bookingService.getCompletedBookingsByUserId(userId)
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
     }
 
     @GetMapping("/user/{userId}/history/cancelled")
     public ResponseEntity<List<BookingResponse>> getCancelledBookingsByUserId(@PathVariable UUID userId) {
-        return ResponseEntity.ok(
-                bookingService.getCancelledBookingsByUserId(userId)
-                        .stream()
-                        .map(this::mapToBookingResponse)
-                        .collect(Collectors.toList())
-        );
+        List<BookingResponse> responses = bookingService.getCancelledBookingsByUserId(userId)
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
     }
 
     @GetMapping("/user/{userId}/history/rejected")
     public ResponseEntity<List<BookingResponse>> getRejectedBookingsByUserId(@PathVariable UUID userId) {
-        return ResponseEntity.ok(
-                bookingService.getRejectedBookingsByUserId(userId)
-                        .stream()
-                        .map(this::mapToBookingResponse)
-                        .collect(Collectors.toList())
-        );
+        List<BookingResponse> responses = bookingService.getRejectedBookingsByUserId(userId)
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
     }
 
     @GetMapping("/user/{userId}/history/date/{date}")
@@ -281,12 +287,12 @@ public class BookingController {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
             LocalDate date
     ) {
-        return ResponseEntity.ok(
-                bookingService.getBookingHistoryByDate(userId, date)
-                        .stream()
-                        .map(this::mapToBookingResponse)
-                        .collect(Collectors.toList())
-        );
+        List<BookingResponse> responses = bookingService.getBookingHistoryByDate(userId, date)
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
     }
 
     @GetMapping("/user/{userId}/history/filter")
@@ -299,12 +305,16 @@ public class BookingController {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
             LocalDate endDate
     ) {
-        return ResponseEntity.ok(
-                bookingService.getBookingHistoryByDateRange(userId, startDate, endDate)
-                        .stream()
-                        .map(this::mapToBookingResponse)
-                        .collect(Collectors.toList())
-        );
+        if (startDate.isAfter(endDate)) {
+            throw new IllegalArgumentException("Start date must be before or equal to end date");
+        }
+
+        List<BookingResponse> responses = bookingService.getBookingHistoryByDateRange(userId, startDate, endDate)
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
     }
 
     @GetMapping("/user/{userId}/history/download/pdf")
@@ -327,12 +337,12 @@ public class BookingController {
 
     @GetMapping("/admin/history")
     public ResponseEntity<List<BookingResponse>> getAllBookingHistoryForAdmin() {
-        return ResponseEntity.ok(
-                bookingService.getAllBookingHistoryForAdmin()
-                        .stream()
-                        .map(this::mapToBookingResponse)
-                        .collect(Collectors.toList())
-        );
+        List<BookingResponse> responses = bookingService.getAllBookingHistoryForAdmin()
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
     }
 
     @GetMapping("/admin/history/filter")
@@ -344,30 +354,53 @@ public class BookingController {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
             LocalDate endDate
     ) {
-        return ResponseEntity.ok(
-                bookingService.getAllBookingHistoryForAdminByDateRange(startDate, endDate)
-                        .stream()
-                        .map(this::mapToBookingResponse)
-                        .collect(Collectors.toList())
-        );
+        if (startDate.isAfter(endDate)) {
+            throw new IllegalArgumentException("Start date must be before or equal to end date");
+        }
+
+        List<BookingResponse> responses = bookingService.getAllBookingHistoryForAdminByDateRange(startDate, endDate)
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
     }
 
     @PostMapping("/summary")
     public ResponseEntity<BookingSummaryResponse> getBookingSummary(@RequestBody BookingRequestDto request) {
         validateBookingRequest(request);
 
-        long durationMinutes = Duration.between(request.getStartAt(), request.getEndAt()).toMinutes();
-
         BookingSummaryResponse response = new BookingSummaryResponse();
         response.setRoomId(request.getRoomId());
         response.setRoomName(bookingService.getRoomNameById(request.getRoomId()));
         response.setUserId(request.getUserId());
-        response.setStartAt(request.getStartAt());
-        response.setEndAt(request.getEndAt());
         response.setPurpose(request.getPurpose());
         response.setAttendeeCount(request.getAttendeeCount());
-        response.setDurationMinutes(durationMinutes);
         response.setStatus(BookingStatus.PENDING);
+
+        if (request.getStartAt() != null && request.getEndAt() != null) {
+            long durationMinutes = Duration.between(
+                    request.getStartAt(),
+                    request.getEndAt()
+            ).toMinutes();
+
+            response.setStartAt(request.getStartAt());
+            response.setEndAt(request.getEndAt());
+            response.setDurationMinutes(durationMinutes);
+            response.setMessage("Booking summary generated successfully");
+            return ResponseEntity.ok(response);
+        }
+
+        TimeSlot slot = timeSlotService.getSlotById(request.getTimeSlotId());
+
+        long durationMinutes = Duration.between(
+                slot.getStartAt(),
+                slot.getEndAt()
+        ).toMinutes();
+
+        response.setStartAt(slot.getStartAt());
+        response.setEndAt(slot.getEndAt());
+        response.setDurationMinutes(durationMinutes);
         response.setMessage("Booking summary generated successfully");
 
         return ResponseEntity.ok(response);
@@ -377,14 +410,26 @@ public class BookingController {
     public ResponseEntity<BookingResponse> createBooking(@RequestBody BookingRequestDto request) {
         validateBookingRequest(request);
 
-        Booking booking = bookingService.createBooking(
-                request.getRoomId(),
-                request.getUserId(),
-                request.getStartAt(),
-                request.getEndAt(),
-                request.getPurpose(),
-                request.getAttendeeCount()
-        );
+        Booking booking;
+
+        if (request.getStartAt() != null && request.getEndAt() != null) {
+            booking = bookingService.createBooking(
+                    request.getRoomId(),
+                    request.getUserId(),
+                    request.getStartAt(),
+                    request.getEndAt(),
+                    request.getPurpose(),
+                    request.getAttendeeCount()
+            );
+        } else {
+            booking = bookingService.createBooking(
+                    request.getRoomId(),
+                    request.getUserId(),
+                    request.getTimeSlotId(),
+                    request.getAttendeeCount(),
+                    request.getPurpose()
+            );
+        }
 
         return ResponseEntity.ok(mapToBookingResponse(booking));
     }
@@ -394,9 +439,8 @@ public class BookingController {
             @PathVariable UUID id,
             @RequestParam UUID approvedBy
     ) {
-        return ResponseEntity.ok(
-                mapToBookingResponse(bookingService.approveBooking(id, approvedBy))
-        );
+        Booking booking = bookingService.approveBooking(id, approvedBy);
+        return ResponseEntity.ok(mapToBookingResponse(booking));
     }
 
     @PutMapping("/{id}/approve")
@@ -404,24 +448,26 @@ public class BookingController {
             @PathVariable UUID id,
             @RequestParam UUID approvedBy
     ) {
-        return ResponseEntity.ok(
-                mapToBookingResponse(bookingService.approveBooking(id, approvedBy))
-        );
+        Booking booking = bookingService.approveBooking(id, approvedBy);
+        return ResponseEntity.ok(mapToBookingResponse(booking));
     }
 
     @PutMapping("/{id}/reject")
     public ResponseEntity<BookingResponse> rejectBooking(@PathVariable UUID id) {
-        return ResponseEntity.ok(mapToBookingResponse(bookingService.rejectBooking(id)));
+        Booking booking = bookingService.rejectBooking(id);
+        return ResponseEntity.ok(mapToBookingResponse(booking));
     }
 
     @PutMapping("/{id}/cancel")
     public ResponseEntity<BookingResponse> cancelBooking(@PathVariable UUID id) {
-        return ResponseEntity.ok(mapToBookingResponse(bookingService.cancelBooking(id)));
+        Booking booking = bookingService.cancelBooking(id);
+        return ResponseEntity.ok(mapToBookingResponse(booking));
     }
 
     @PutMapping("/{id}/complete")
     public ResponseEntity<BookingResponse> completeBooking(@PathVariable UUID id) {
-        return ResponseEntity.ok(mapToBookingResponse(bookingService.completeBooking(id)));
+        Booking booking = bookingService.completeBooking(id);
+        return ResponseEntity.ok(mapToBookingResponse(booking));
     }
 
     @PutMapping("/{id}/status")
@@ -429,7 +475,8 @@ public class BookingController {
             @PathVariable UUID id,
             @RequestParam BookingStatus status
     ) {
-        return ResponseEntity.ok(mapToBookingResponse(bookingService.updateBookingStatus(id, status)));
+        Booking booking = bookingService.updateBookingStatus(id, status);
+        return ResponseEntity.ok(mapToBookingResponse(booking));
     }
 
     @PutMapping("/{id}/reschedule")
@@ -439,10 +486,12 @@ public class BookingController {
     ) {
         validateRescheduleRequest(request);
 
+        OffsetDateTimeRange range = resolveBookingRange(request);
+
         Booking booking = bookingService.rescheduleBooking(
                 id,
-                request.getStartAt(),
-                request.getEndAt()
+                range.startAt(),
+                range.endAt()
         );
 
         return ResponseEntity.ok(mapToBookingResponse(booking));
@@ -456,58 +505,88 @@ public class BookingController {
 
     private void validateBookingRequest(BookingRequestDto request) {
         if (request == null) {
-            throw new RuntimeException("Booking request is required");
+            throw new IllegalArgumentException("Booking request is required");
         }
         if (request.getRoomId() == null) {
-            throw new RuntimeException("Room ID is required");
+            throw new IllegalArgumentException("Room ID is required");
         }
         if (request.getUserId() == null) {
-            throw new RuntimeException("User ID is required");
+            throw new IllegalArgumentException("User ID is required");
         }
-        if (request.getStartAt() == null || request.getEndAt() == null) {
-            throw new RuntimeException("Start time and end time are required");
+        if (request.getAttendeeCount() == null || request.getAttendeeCount() <= 0) {
+            throw new IllegalArgumentException("Attendee count must be greater than 0");
         }
-        if (!request.getEndAt().isAfter(request.getStartAt())) {
-            throw new RuntimeException("End time must be after start time");
+
+        boolean hasCustomRange = request.getStartAt() != null || request.getEndAt() != null;
+        boolean hasSlotId = request.getTimeSlotId() != null;
+
+        if (hasCustomRange) {
+            if (request.getStartAt() == null || request.getEndAt() == null) {
+                throw new IllegalArgumentException("Both startAt and endAt are required");
+            }
+            if (!request.getEndAt().isAfter(request.getStartAt())) {
+                throw new IllegalArgumentException("endAt must be after startAt");
+            }
+            return;
         }
-        if (!request.getStartAt().isAfter(OffsetDateTime.now(APP_ZONE))) {
-            throw new RuntimeException("Start time must be in the future");
-        }
-        if (request.getAttendeeCount() != null && request.getAttendeeCount() <= 0) {
-            throw new RuntimeException("Attendee count must be greater than 0");
+
+        if (!hasSlotId) {
+            throw new IllegalArgumentException("Either timeSlotId or startAt/endAt is required");
         }
     }
 
     private void validateRescheduleRequest(BookingRequestDto request) {
         if (request == null) {
-            throw new RuntimeException("Reschedule request is required");
+            throw new IllegalArgumentException("Reschedule request is required");
         }
-        if (request.getStartAt() == null || request.getEndAt() == null) {
-            throw new RuntimeException("Start time and end time are required");
+
+        boolean hasCustomRange = request.getStartAt() != null || request.getEndAt() != null;
+        boolean hasSlotId = request.getTimeSlotId() != null;
+
+        if (hasCustomRange) {
+            if (request.getStartAt() == null || request.getEndAt() == null) {
+                throw new IllegalArgumentException("Both startAt and endAt are required");
+            }
+            if (!request.getEndAt().isAfter(request.getStartAt())) {
+                throw new IllegalArgumentException("endAt must be after startAt");
+            }
+            return;
         }
-        if (!request.getEndAt().isAfter(request.getStartAt())) {
-            throw new RuntimeException("End time must be after start time");
+
+        if (!hasSlotId) {
+            throw new IllegalArgumentException("Either timeSlotId or startAt/endAt is required");
         }
-        if (!request.getStartAt().isAfter(OffsetDateTime.now(APP_ZONE))) {
-            throw new RuntimeException("Start time must be in the future");
+    }
+
+    private OffsetDateTimeRange resolveBookingRange(BookingRequestDto request) {
+        if (request.getStartAt() != null && request.getEndAt() != null) {
+            return new OffsetDateTimeRange(request.getStartAt(), request.getEndAt());
         }
+
+        TimeSlot slot = timeSlotService.getSlotById(request.getTimeSlotId());
+        return new OffsetDateTimeRange(slot.getStartAt(), slot.getEndAt());
     }
 
     private BookingResponse mapToBookingResponse(Booking booking) {
         BookingResponse response = new BookingResponse();
 
         response.setBookingId(booking.getId());
-        response.setRoomId(booking.getRoom().getId());
-        response.setRoomName(
-                booking.getRoom().getBlockName() + " - " + booking.getRoom().getRoomNumber()
-        );
-        response.setUserId(booking.getUser().getId());
-        response.setUserName(booking.getUser().getName());
+
+        if (booking.getRoom() != null) {
+            response.setRoomId(booking.getRoom().getId());
+            response.setRoomName(booking.getRoom().getDisplayName());
+        }
+
+        if (booking.getUser() != null) {
+            response.setUserId(booking.getUser().getId());
+            response.setUserName(booking.getUser().getName());
+        }
+
         response.setStartAt(booking.getStartAt());
         response.setEndAt(booking.getEndAt());
         response.setPurpose(booking.getPurpose());
         response.setAttendeeCount(booking.getAttendeeCount());
-        response.setStatus(booking.getStatus());
+        response.setStatus(booking.getStatus() != null ? booking.getStatus().getValue() : null);
         response.setCheckinStatus(booking.getCheckinStatus());
         response.setCancellationReason(booking.getCancellationReason());
         response.setQrToken(booking.getQrToken());
@@ -522,11 +601,16 @@ public class BookingController {
         }
 
         long durationMinutes = 0;
-        if (booking.getStartAt() != null && booking.getEndAt() != null && booking.getEndAt().isAfter(booking.getStartAt())) {
+        if (booking.getStartAt() != null
+                && booking.getEndAt() != null
+                && booking.getEndAt().isAfter(booking.getStartAt())) {
             durationMinutes = Duration.between(booking.getStartAt(), booking.getEndAt()).toMinutes();
         }
         response.setDurationMinutes(durationMinutes);
 
         return response;
+    }
+
+    private record OffsetDateTimeRange(java.time.OffsetDateTime startAt, java.time.OffsetDateTime endAt) {
     }
 }

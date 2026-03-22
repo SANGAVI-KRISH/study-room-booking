@@ -1,6 +1,8 @@
 package com.studyroom.booking.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
+
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -13,8 +15,9 @@ public class MaintenanceBlock {
     @Column(columnDefinition = "uuid", updatable = false, nullable = false)
     private UUID id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "room_id", nullable = false)
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
     private StudyRoom room;
 
     @Column(name = "start_at", nullable = false)
@@ -23,27 +26,29 @@ public class MaintenanceBlock {
     @Column(name = "end_at", nullable = false)
     private OffsetDateTime endAt;
 
-    @Column(name = "reason")
+    @Column(name = "reason", length = 500)
     private String reason;
 
-    @Column(name = "status", nullable = false)
-    private String status = "blocked"; // blocked, completed, cancelled
+    @Column(name = "status")
+    private String status;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "created_by")
-    private User createdBy;
+    @Column(name = "created_by")
+    private UUID createdBy;
 
-    @Column(name = "created_at", nullable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
+
+    public MaintenanceBlock() {
+    }
 
     @PrePersist
     public void prePersist() {
-        if (createdAt == null) {
-            createdAt = OffsetDateTime.now();
+        if (this.createdAt == null) {
+            this.createdAt = OffsetDateTime.now();
         }
-    }
-
-    public MaintenanceBlock() {
+        if (this.status == null || this.status.isBlank()) {
+            this.status = "ACTIVE";
+        }
     }
 
     public UUID getId() {
@@ -94,11 +99,11 @@ public class MaintenanceBlock {
         this.status = status;
     }
 
-    public User getCreatedBy() {
+    public UUID getCreatedBy() {
         return createdBy;
     }
 
-    public void setCreatedBy(User createdBy) {
+    public void setCreatedBy(UUID createdBy) {
         this.createdBy = createdBy;
     }
 

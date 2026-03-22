@@ -1,6 +1,5 @@
 package com.studyroom.booking.dto;
 
-import jakarta.validation.constraints.Future;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 
@@ -15,42 +14,39 @@ public class BookingRequestDto {
     @NotNull(message = "User ID is required")
     private UUID userId;
 
-    @NotNull(message = "Start date and time is required")
-    @Future(message = "Start date and time must be in the future")
-    private OffsetDateTime startAt;
+    // Optional for flexible booking flow
+    private UUID timeSlotId;
 
-    @NotNull(message = "End date and time is required")
+    // New: custom booking start and end
+    private OffsetDateTime startAt;
     private OffsetDateTime endAt;
 
     private String purpose;
 
+    @NotNull(message = "Attendee count is required")
     @Positive(message = "Attendee count must be greater than 0")
     private Integer attendeeCount;
 
     public BookingRequestDto() {
     }
 
-    public BookingRequestDto(UUID roomId,
-                             UUID userId,
-                             OffsetDateTime startAt,
-                             OffsetDateTime endAt,
-                             String purpose,
-                             Integer attendeeCount) {
+    public BookingRequestDto(
+            UUID roomId,
+            UUID userId,
+            UUID timeSlotId,
+            OffsetDateTime startAt,
+            OffsetDateTime endAt,
+            String purpose,
+            Integer attendeeCount
+    ) {
         this.roomId = roomId;
         this.userId = userId;
+        this.timeSlotId = timeSlotId;
         this.startAt = startAt;
         this.endAt = endAt;
         this.purpose = purpose;
         this.attendeeCount = attendeeCount;
     }
-
-    // ----------- VALIDATION METHOD (IMPORTANT) -----------
-
-    public boolean isValidTimeRange() {
-        return startAt != null && endAt != null && endAt.isAfter(startAt);
-    }
-
-    // ----------- GETTERS & SETTERS -----------
 
     public UUID getRoomId() {
         return roomId;
@@ -66,6 +62,14 @@ public class BookingRequestDto {
 
     public void setUserId(UUID userId) {
         this.userId = userId;
+    }
+
+    public UUID getTimeSlotId() {
+        return timeSlotId;
+    }
+
+    public void setTimeSlotId(UUID timeSlotId) {
+        this.timeSlotId = timeSlotId;
     }
 
     public OffsetDateTime getStartAt() {
@@ -97,9 +101,6 @@ public class BookingRequestDto {
     }
 
     public void setAttendeeCount(Integer attendeeCount) {
-        if (attendeeCount != null && attendeeCount <= 0) {
-            throw new IllegalArgumentException("Attendee count must be greater than 0");
-        }
         this.attendeeCount = attendeeCount;
     }
 }

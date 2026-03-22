@@ -22,22 +22,26 @@ public class BookingSummaryResponse {
     private String purpose;
     private Integer attendeeCount;
 
-    private long durationMinutes;   // 🔥 renamed to match controller
+    // 🔥 Final duration field
+    private long durationMinutes;
+
     private BookingStatus status;
     private String message;
 
     public BookingSummaryResponse() {
     }
 
-    public BookingSummaryResponse(UUID roomId,
-                                  String roomName,
-                                  UUID userId,
-                                  OffsetDateTime startAt,
-                                  OffsetDateTime endAt,
-                                  String purpose,
-                                  Integer attendeeCount,
-                                  BookingStatus status,
-                                  String message) {
+    public BookingSummaryResponse(
+            UUID roomId,
+            String roomName,
+            UUID userId,
+            OffsetDateTime startAt,
+            OffsetDateTime endAt,
+            String purpose,
+            Integer attendeeCount,
+            BookingStatus status,
+            String message
+    ) {
         this.roomId = roomId;
         this.roomName = roomName;
         this.userId = userId;
@@ -47,8 +51,11 @@ public class BookingSummaryResponse {
         this.attendeeCount = attendeeCount;
         this.status = status;
         this.message = message;
+
         this.durationMinutes = calculateDuration(startAt, endAt);
     }
+
+    // ================= HELPER =================
 
     private long calculateDuration(OffsetDateTime startAt, OffsetDateTime endAt) {
         if (startAt != null && endAt != null && endAt.isAfter(startAt)) {
@@ -61,7 +68,7 @@ public class BookingSummaryResponse {
         this.durationMinutes = calculateDuration(this.startAt, this.endAt);
     }
 
-    // -------- GETTERS & SETTERS --------
+    // ================= GETTERS & SETTERS =================
 
     public UUID getRoomId() {
         return roomId;
@@ -93,7 +100,7 @@ public class BookingSummaryResponse {
 
     public void setStartAt(OffsetDateTime startAt) {
         this.startAt = startAt;
-        recalculateDuration();
+        recalculateDuration(); // 🔥 auto update
     }
 
     public OffsetDateTime getEndAt() {
@@ -102,7 +109,7 @@ public class BookingSummaryResponse {
 
     public void setEndAt(OffsetDateTime endAt) {
         this.endAt = endAt;
-        recalculateDuration();
+        recalculateDuration(); // 🔥 auto update
     }
 
     public String getPurpose() {

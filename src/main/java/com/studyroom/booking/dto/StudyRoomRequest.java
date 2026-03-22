@@ -10,7 +10,6 @@ public class StudyRoomRequest {
     private String roomNumber;
     private String floorNumber;
     private Integer seatingCapacity;
-    private String availabilityTimings;
     private String facilities;
     private String district;
     private String location;
@@ -57,14 +56,6 @@ public class StudyRoomRequest {
 
     public void setSeatingCapacity(Integer seatingCapacity) {
         this.seatingCapacity = seatingCapacity;
-    }
-
-    public String getAvailabilityTimings() {
-        return availabilityTimings;
-    }
-
-    public void setAvailabilityTimings(String availabilityTimings) {
-        this.availabilityTimings = availabilityTimings;
     }
 
     public String getFacilities() {

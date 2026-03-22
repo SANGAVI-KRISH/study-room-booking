@@ -21,11 +21,15 @@ public class JwtUtil {
     }
 
     public String generateToken(String email, String role) {
+        if (email == null || email.isBlank()) {
+            throw new RuntimeException("Email is required to generate token");
+        }
+
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + JWT_EXPIRATION_MS);
 
         return Jwts.builder()
-                .subject(email)
+                .subject(email.trim())
                 .claim("role", role)
                 .issuedAt(now)
                 .expiration(expiryDate)
@@ -46,33 +50,40 @@ public class JwtUtil {
     }
 
     public boolean isTokenExpired(String token) {
-        return extractExpiration(token).before(new Date());
+        Date expiration = extractExpiration(token);
+        return expiration == null || expiration.before(new Date());
     }
 
     public boolean isTokenValid(String token) {
         try {
-            Claims claims = extractAllClaims(token);
+            if (token == null || token.trim().isEmpty()) {
+                return false;
+            }
+
+            Claims claims = extractAllClaims(token.trim());
             String email = claims.getSubject();
             Date expiration = claims.getExpiration();
 
-            System.out.println("JWT subject: " + email);
-            System.out.println("JWT expiration: " + expiration);
-
-            return email != null && !email.isBlank() && expiration != null && expiration.after(new Date());
+            return email != null
+                    && !email.isBlank()
+                    && expiration != null
+                    && expiration.after(new Date());
         } catch (SecurityException e) {
-            System.out.println("JWT security exception: " + e.getMessage());
             return false;
         } catch (Exception e) {
-            System.out.println("JWT validation exception: " + e.getMessage());
             return false;
         }
     }
 
     private Claims extractAllClaims(String token) {
+        if (token == null || token.trim().isEmpty()) {
+            throw new RuntimeException("JWT token is required");
+        }
+
         return Jwts.parser()
                 .verifyWith(getSigningKey())
                 .build()
-                .parseSignedClaims(token)
+                .parseSignedClaims(token.trim())
                 .getPayload();
     }
 }

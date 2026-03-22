@@ -1,7 +1,14 @@
 package com.studyroom.booking.service;
 
-import com.lowagie.text.*;
-import com.lowagie.text.pdf.*;
+import com.lowagie.text.Document;
+import com.lowagie.text.Element;
+import com.lowagie.text.Font;
+import com.lowagie.text.PageSize;
+import com.lowagie.text.Paragraph;
+import com.lowagie.text.Phrase;
+import com.lowagie.text.pdf.PdfPCell;
+import com.lowagie.text.pdf.PdfPTable;
+import com.lowagie.text.pdf.PdfWriter;
 import com.studyroom.booking.model.Booking;
 import org.springframework.stereotype.Service;
 
@@ -34,7 +41,6 @@ public class BookingPdfService {
             PdfPTable table = new PdfPTable(7);
             table.setWidthPercentage(100);
             table.setSpacingBefore(10f);
-
             table.setWidths(new float[]{2.8f, 2.2f, 2.2f, 2.2f, 2.5f, 2.2f, 3.0f});
 
             addHeaderCell(table, "Room Name", headerFont);
@@ -57,25 +63,53 @@ public class BookingPdfService {
             } else {
                 for (Booking booking : bookings) {
                     table.addCell(createBodyCell(
-                            booking.getRoom() != null ? booking.getRoom().getBlockName() : "-", bodyFont));
+                            booking.getRoom() != null
+                                    ? booking.getRoom().getBlockName()
+                                    : "-",
+                            bodyFont
+                    ));
 
                     table.addCell(createBodyCell(
-                            booking.getStartAt() != null ? booking.getStartAt().toLocalDate().format(dateFormatter) : "-", bodyFont));
+                            booking.getStartAt() != null
+                                    ? booking.getStartAt().toLocalDate().format(dateFormatter)
+                                    : "-",
+                            bodyFont
+                    ));
 
                     table.addCell(createBodyCell(
-                            booking.getStartAt() != null ? booking.getStartAt().toLocalTime().format(timeFormatter) : "-", bodyFont));
+                            booking.getStartAt() != null
+                                    ? booking.getStartAt().toLocalTime().format(timeFormatter)
+                                    : "-",
+                            bodyFont
+                    ));
 
                     table.addCell(createBodyCell(
-                            booking.getEndAt() != null ? booking.getEndAt().toLocalTime().format(timeFormatter) : "-", bodyFont));
+                            booking.getEndAt() != null
+                                    ? booking.getEndAt().toLocalTime().format(timeFormatter)
+                                    : "-",
+                            bodyFont
+                    ));
 
                     table.addCell(createBodyCell(
-                            booking.getStatus() != null ? booking.getStatus().name() : "-", bodyFont));
+                            booking.getStatus() != null
+                                    ? booking.getStatus().getValue()
+                                    : "-",
+                            bodyFont
+                    ));
 
                     table.addCell(createBodyCell(
-                            booking.getPurpose() != null ? booking.getPurpose() : "-", bodyFont));
+                            booking.getPurpose() != null && !booking.getPurpose().isBlank()
+                                    ? booking.getPurpose()
+                                    : "-",
+                            bodyFont
+                    ));
 
                     table.addCell(createBodyCell(
-                            booking.getUser() != null ? booking.getUser().getName() : "-", bodyFont));
+                            booking.getUser() != null
+                                    ? booking.getUser().getName()
+                                    : "-",
+                            bodyFont
+                    ));
                 }
             }
 

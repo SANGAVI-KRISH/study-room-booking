@@ -1,6 +1,7 @@
 package com.studyroom.booking.dto;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -10,18 +11,23 @@ public class AvailableSlotsResponse {
     private LocalDate date;
     private Integer dayOfWeek;
     private Integer slotDurationMins;
-    private List<SlotItem> slots;
+    private List<SlotItem> slots = new ArrayList<>();
 
     public AvailableSlotsResponse() {
     }
 
-    public AvailableSlotsResponse(UUID roomId, LocalDate date, Integer dayOfWeek,
-                                  Integer slotDurationMins, List<SlotItem> slots) {
+    public AvailableSlotsResponse(
+            UUID roomId,
+            LocalDate date,
+            Integer dayOfWeek,
+            Integer slotDurationMins,
+            List<SlotItem> slots
+    ) {
         this.roomId = roomId;
         this.date = date;
         this.dayOfWeek = dayOfWeek;
         this.slotDurationMins = slotDurationMins;
-        this.slots = slots;
+        this.slots = slots != null ? slots : new ArrayList<>();
     }
 
     public UUID getRoomId() {
@@ -61,6 +67,6 @@ public class AvailableSlotsResponse {
     }
 
     public void setSlots(List<SlotItem> slots) {
-        this.slots = slots;
+        this.slots = slots != null ? slots : new ArrayList<>();
     }
 }

@@ -3,20 +3,16 @@ package com.studyroom.booking.controller;
 import com.studyroom.booking.dto.StudyRoomRequest;
 import com.studyroom.booking.dto.StudyRoomResponse;
 import com.studyroom.booking.service.StudyRoomService;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/rooms")
-@CrossOrigin(origins = {
-        "http://localhost:5173",
-        "http://127.0.0.1:5173"
-})
+@CrossOrigin(origins = "*")
 public class StudyRoomController {
 
     private final StudyRoomService studyRoomService;
@@ -25,71 +21,71 @@ public class StudyRoomController {
         this.studyRoomService = studyRoomService;
     }
 
-    // Add new room with images
-    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<?> addRoom(@ModelAttribute StudyRoomRequest request) {
-        try {
-            StudyRoomResponse savedRoom = studyRoomService.addRoom(request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(savedRoom);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body("Failed to add room: " + e.getMessage());
-        }
+    /* ================= CREATE ================= */
+
+    @PostMapping(consumes = {"multipart/form-data"})
+    public ResponseEntity<StudyRoomResponse> addRoom(@ModelAttribute StudyRoomRequest request) {
+        StudyRoomResponse response = studyRoomService.addRoom(request);
+        return ResponseEntity.ok(response);
     }
 
-    // Get all rooms
+    /* ================= READ ================= */
+
     @GetMapping
-    public ResponseEntity<?> getAllRooms() {
-        try {
-            List<StudyRoomResponse> rooms = studyRoomService.getAllRooms();
-            return ResponseEntity.ok(rooms);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Failed to fetch rooms: " + e.getMessage());
-        }
+    public ResponseEntity<List<StudyRoomResponse>> getAllRooms() {
+        return ResponseEntity.ok(studyRoomService.getAllRooms());
     }
 
-    // Get room by ID
+    @GetMapping("/active")
+    public ResponseEntity<List<StudyRoomResponse>> getAllActiveRooms() {
+        return ResponseEntity.ok(studyRoomService.getAllActiveRooms());
+    }
+
     @GetMapping("/{id}")
-    public ResponseEntity<?> getRoomById(@PathVariable UUID id) {
-        try {
-            return studyRoomService.getRoomById(id)
-                    .<ResponseEntity<?>>map(ResponseEntity::ok)
-                    .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
-                            .body("Room not found with id: " + id));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Failed to fetch room: " + e.getMessage());
-        }
+    public ResponseEntity<StudyRoomResponse> getRoomById(@PathVariable UUID id) {
+        Optional<StudyRoomResponse> room = studyRoomService.getRoomById(id);
+        return room.map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
-    // Update room details and optionally replace images
-    @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<?> updateRoom(@PathVariable UUID id, @ModelAttribute StudyRoomRequest request) {
-        try {
-            StudyRoomResponse updatedRoom = studyRoomService.updateRoom(id, request);
-            return ResponseEntity.ok(updatedRoom);
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(e.getMessage());
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body("Failed to update room: " + e.getMessage());
-        }
+    /* ================= UPDATE ================= */
+
+    @PutMapping(value = "/{id}", consumes = {"multipart/form-data"})
+    public ResponseEntity<StudyRoomResponse> updateRoom(
+            @PathVariable UUID id,
+            @ModelAttribute StudyRoomRequest request
+    ) {
+        StudyRoomResponse response = studyRoomService.updateRoom(id, request);
+        return ResponseEntity.ok(response);
     }
 
-    // Delete room
+    @PutMapping("/{id}/deactivate")
+    public ResponseEntity<String> deactivateRoom(@PathVariable UUID id) {
+        String response = studyRoomService.deactivateRoom(id);
+        return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/{id}/activate")
+    public ResponseEntity<String> activateRoom(@PathVariable UUID id) {
+        String response = studyRoomService.activateRoom(id);
+        return ResponseEntity.ok(response);
+    }
+
+    /* ================= DELETE ================= */
+
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> deleteRoom(@PathVariable UUID id) {
-        try {
-            studyRoomService.deleteRoom(id);
-            return ResponseEntity.ok("Room deleted successfully");
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(e.getMessage());
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body("Failed to delete room: " + e.getMessage());
-        }
+    public ResponseEntity<String> deleteRoom(@PathVariable UUID id) {
+        String response = studyRoomService.deleteRoom(id);
+        return ResponseEntity.ok(response);
+    }
+
+    /* ================= FILTER API ================= */
+
+    @GetMapping("/filter")
+    public ResponseEntity<List<StudyRoomResponse>> filterRooms(
+            @RequestParam String district,
+            @RequestParam String location
+    ) {
+        return ResponseEntity.ok(studyRoomService.getFilteredRoomResponses(district, location));
     }
 }

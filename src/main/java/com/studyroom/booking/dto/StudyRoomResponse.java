@@ -9,11 +9,15 @@ import java.util.UUID;
 public class StudyRoomResponse {
 
     private UUID id;
+    private String displayName;
     private String blockName;
+
+    // 🔥 NEW (for consistency with TimeSlotResponse)
+    private String block;
+
     private String roomNumber;
     private String floorNumber;
     private Integer seatingCapacity;
-    private String availabilityTimings;
     private String facilities;
     private String district;
     private String location;
@@ -34,12 +38,32 @@ public class StudyRoomResponse {
         this.id = id;
     }
 
+    public String getDisplayName() {
+        return displayName;
+    }
+
+    public void setDisplayName(String displayName) {
+        this.displayName = displayName;
+    }
+
     public String getBlockName() {
         return blockName;
     }
 
     public void setBlockName(String blockName) {
         this.blockName = blockName;
+
+        // 🔥 auto sync
+        this.block = blockName;
+    }
+
+    public String getBlock() {
+        return block;
+    }
+
+    public void setBlock(String block) {
+        this.block = block;
+        this.blockName = block; // keep both synced
     }
 
     public String getRoomNumber() {
@@ -64,14 +88,6 @@ public class StudyRoomResponse {
 
     public void setSeatingCapacity(Integer seatingCapacity) {
         this.seatingCapacity = seatingCapacity;
-    }
-
-    public String getAvailabilityTimings() {
-        return availabilityTimings;
-    }
-
-    public void setAvailabilityTimings(String availabilityTimings) {
-        this.availabilityTimings = availabilityTimings;
     }
 
     public String getFacilities() {

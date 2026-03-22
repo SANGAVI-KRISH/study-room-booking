@@ -52,7 +52,6 @@ export default function ManageStudyRooms() {
     roomNumber: "",
     floorNumber: "",
     seatingCapacity: "",
-    availabilityTimings: "",
     facilities: "",
     district: "",
     location: "",
@@ -82,16 +81,36 @@ export default function ManageStudyRooms() {
     opacity: 0,
   });
 
-  const token = localStorage.getItem("token");
-  const role = localStorage.getItem("role");
+  const getToken = () => localStorage.getItem("token");
+  const getRole = () => localStorage.getItem("role");
+
+  const isAdminRole = (role) => role === "ADMIN" || role === "ROLE_ADMIN";
+
+  const getRoomDisplayName = (room) => {
+    if (room?.displayName && String(room.displayName).trim() !== "") {
+      return room.displayName.trim();
+    }
+
+    const block = room?.blockName ? String(room.blockName).trim() : "";
+    const roomNo = room?.roomNumber ? String(room.roomNumber).trim() : "";
+
+    if (block && roomNo) return `${block} - ${roomNo}`;
+    if (block) return block;
+    if (roomNo) return roomNo;
+    return "Unnamed Room";
+  };
 
   useEffect(() => {
+    const token = getToken();
+    const role = getRole();
+
     if (!token) {
+      alert("Please login again.");
       navigate("/login");
       return;
     }
 
-    if (role !== "ADMIN") {
+    if (!isAdminRole(role)) {
       alert("Access denied. Admin only.");
       navigate("/login");
       return;
@@ -99,7 +118,7 @@ export default function ManageStudyRooms() {
 
     fetchRooms();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navigate, token, role]);
+  }, [navigate]);
 
   useEffect(() => {
     const previewUrls = selectedFiles.map((file) => URL.createObjectURL(file));
@@ -122,6 +141,12 @@ export default function ManageStudyRooms() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [galleryOpen, galleryImages.length, galleryIndex]);
+
+  const handleUnauthorized = () => {
+    localStorage.removeItem("token");
+    alert("Session expired or unauthorized. Please login again.");
+    navigate("/login");
+  };
 
   const getErrorMessage = async (res, fallbackMessage) => {
     try {
@@ -160,11 +185,23 @@ export default function ManageStudyRooms() {
       setLoading(true);
       setError("");
 
+      const token = getToken();
+      if (!token) {
+        handleUnauthorized();
+        return;
+      }
+
       const res = await fetch(`${API_BASE_URL}/api/rooms`, {
+        method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
+
+      if (res.status === 401 || res.status === 403) {
+        handleUnauthorized();
+        return;
+      }
 
       if (!res.ok) {
         throw new Error(await getErrorMessage(res, "Failed to fetch rooms"));
@@ -188,6 +225,10 @@ export default function ManageStudyRooms() {
     }));
   };
 
+  const preventNumberScrollChange = (e) => {
+    e.target.blur();
+  };
+
   const handleImageChange = (e) => {
     const files = Array.from(e.target.files || []);
     setSelectedFiles(files);
@@ -206,7 +247,6 @@ export default function ManageStudyRooms() {
       !form.roomNumber.trim() ||
       !form.floorNumber.trim() ||
       !form.seatingCapacity ||
-      !form.availabilityTimings.trim() ||
       !form.facilities.trim() ||
       !form.district.trim() ||
       !form.location.trim() ||
@@ -233,11 +273,10 @@ export default function ManageStudyRooms() {
     formData.append("roomNumber", form.roomNumber.trim());
     formData.append("floorNumber", form.floorNumber.trim());
     formData.append("seatingCapacity", String(Number(form.seatingCapacity)));
-    formData.append("availabilityTimings", form.availabilityTimings.trim());
     formData.append("facilities", form.facilities.trim());
     formData.append("district", form.district.trim());
     formData.append("location", form.location.trim());
-    formData.append("feePerHour", String(Number(form.feePerHour)));
+    formData.append("feePerHour", String(parseFloat(form.feePerHour)));
     formData.append("approvalRequired", String(Boolean(form.approvalRequired)));
 
     selectedFiles.forEach((file) => {
@@ -261,29 +300,42 @@ export default function ManageStudyRooms() {
     try {
       setSubmitting(true);
 
+      const token = getToken();
+      if (!token) {
+        handleUnauthorized();
+        return;
+      }
+
       const formData = buildFormData();
       const isEditMode = Boolean(editingRoomId);
 
-      const res = await fetch(
-        isEditMode
-          ? `${API_BASE_URL}/api/rooms/${editingRoomId}`
-          : `${API_BASE_URL}/api/rooms`,
-        {
-          method: isEditMode ? "PUT" : "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          body: formData,
-        }
-      );
+      if (isEditMode && !editingRoomId) {
+        throw new Error("Room ID is missing. Cannot update.");
+      }
+
+      const url = isEditMode
+        ? `${API_BASE_URL}/api/rooms/${editingRoomId}`
+        : `${API_BASE_URL}/api/rooms`;
+
+      const res = await fetch(url, {
+        method: isEditMode ? "PUT" : "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (res.status === 401 || res.status === 403) {
+        handleUnauthorized();
+        return;
+      }
 
       if (!res.ok) {
-        throw new Error(
-          await getErrorMessage(
-            res,
-            isEditMode ? "Failed to update room" : "Failed to add room"
-          )
+        const errMsg = await getErrorMessage(
+          res,
+          isEditMode ? "Failed to update room" : "Failed to add room"
         );
+        throw new Error(errMsg);
       }
 
       const savedRoom = await res.json();
@@ -309,6 +361,12 @@ export default function ManageStudyRooms() {
   const handleEdit = (room) => {
     setMessage("");
     setError("");
+
+    if (!room?.id) {
+      alert("Invalid room data");
+      return;
+    }
+
     setEditingRoomId(room.id);
 
     setForm({
@@ -316,16 +374,19 @@ export default function ManageStudyRooms() {
       roomNumber: room.roomNumber || "",
       floorNumber: room.floorNumber || "",
       seatingCapacity: room.seatingCapacity ?? "",
-      availabilityTimings: room.availabilityTimings || "",
       facilities: room.facilities || "",
       district: room.district || "",
       location: room.location || "",
-      feePerHour: room.feePerHour ?? "",
+      feePerHour:
+        room.feePerHour !== null && room.feePerHour !== undefined
+          ? String(room.feePerHour)
+          : "",
       approvalRequired: Boolean(room.approvalRequired),
     });
 
     setSelectedFiles([]);
     setLocalPreviewUrls([]);
+
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -342,6 +403,12 @@ export default function ManageStudyRooms() {
       setMessage("");
       setError("");
 
+      const token = getToken();
+      if (!token) {
+        handleUnauthorized();
+        return;
+      }
+
       const res = await fetch(`${API_BASE_URL}/api/rooms/${id}`, {
         method: "DELETE",
         headers: {
@@ -349,8 +416,16 @@ export default function ManageStudyRooms() {
         },
       });
 
+      if (res.status === 401 || res.status === 403) {
+        handleUnauthorized();
+        return;
+      }
+
+      const responseMessage = await res.text();
+
       if (!res.ok) {
-        throw new Error(await getErrorMessage(res, "Failed to delete room"));
+        alert(responseMessage || "Failed to delete room");
+        return;
       }
 
       setRooms((prev) => prev.filter((room) => room.id !== id));
@@ -359,9 +434,9 @@ export default function ManageStudyRooms() {
         resetForm();
       }
 
-      setMessage("Room deleted successfully.");
-    } catch (err) {
-      setError(err.message || "Error deleting room");
+      alert(responseMessage || "Room deleted successfully.");
+    } catch {
+      alert("Error deleting room");
     }
   };
 
@@ -425,7 +500,7 @@ export default function ManageStudyRooms() {
     if (images.length === 0) return;
 
     setGalleryImages(images);
-    setGalleryTitle(`${room.blockName} - ${room.roomNumber}`);
+    setGalleryTitle(getRoomDisplayName(room));
     setGalleryIndex(startIndex);
     setGalleryOpen(true);
     setZoomStyle({
@@ -603,19 +678,10 @@ export default function ManageStudyRooms() {
                 placeholder="Enter capacity"
                 value={form.seatingCapacity}
                 onChange={handleChange}
+                onWheel={preventNumberScrollChange}
                 style={styles.input}
                 min="1"
-              />
-            </div>
-
-            <div style={styles.fieldGroup}>
-              <label style={styles.label}>Availability Timings</label>
-              <input
-                name="availabilityTimings"
-                placeholder="Example: 9 AM - 6 PM"
-                value={form.availabilityTimings}
-                onChange={handleChange}
-                style={styles.input}
+                step="1"
               />
             </div>
 
@@ -627,9 +693,10 @@ export default function ManageStudyRooms() {
                 placeholder="Enter hourly fee"
                 value={form.feePerHour}
                 onChange={handleChange}
+                onWheel={preventNumberScrollChange}
                 style={styles.input}
                 min="0"
-                step="1"
+                step="0.01"
               />
             </div>
 
@@ -785,7 +852,7 @@ export default function ManageStudyRooms() {
                       <>
                         <img
                           src={primaryImage}
-                          alt={`${room.blockName} ${room.roomNumber}`}
+                          alt={getRoomDisplayName(room)}
                           style={styles.cardImage}
                           onError={handleImageError}
                         />
@@ -801,21 +868,24 @@ export default function ManageStudyRooms() {
                   </div>
 
                   <div style={styles.cardTop}>
-                    <h3 style={styles.roomTitle}>
-                      {room.blockName} - {room.roomNumber}
-                    </h3>
-                    <span style={styles.feeBadge}>₹{room.feePerHour ?? 0}/hr</span>
+                    <h3 style={styles.roomTitle}>{getRoomDisplayName(room)}</h3>
+                    <span style={styles.feeBadge}>
+                      ₹{room.feePerHour ?? 0}/hr
+                    </span>
                   </div>
 
                   <div style={styles.infoList}>
+                    <p>
+                      <strong>Block:</strong> {room.blockName || "-"}
+                    </p>
+                    <p>
+                      <strong>Room Number:</strong> {room.roomNumber || "-"}
+                    </p>
                     <p>
                       <strong>Floor:</strong> {room.floorNumber || "-"}
                     </p>
                     <p>
                       <strong>Capacity:</strong> {room.seatingCapacity || "-"}
-                    </p>
-                    <p>
-                      <strong>Availability:</strong> {room.availabilityTimings || "-"}
                     </p>
                     <p>
                       <strong>District:</strong> {room.district || "-"}

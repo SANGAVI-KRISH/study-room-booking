@@ -1,6 +1,7 @@
 package com.studyroom.booking.model;
 
 import jakarta.persistence.*;
+
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -9,7 +10,7 @@ import java.util.UUID;
 public class User {
 
     @Id
-    @GeneratedValue
+    @GeneratedValue(strategy = GenerationType.UUID)
     @Column(columnDefinition = "uuid", updatable = false, nullable = false)
     private UUID id;
 
@@ -35,24 +36,49 @@ public class User {
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
 
-    @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
+    @Column(name = "created_at", insertable = false, updatable = false)
     private OffsetDateTime createdAt;
 
-    @Column(name = "updated_at", nullable = false, insertable = false, updatable = false)
+    @Column(name = "updated_at", insertable = false, updatable = false)
     private OffsetDateTime updatedAt;
 
-    public User() {
-    }
+    // ================= CONSTRUCTORS =================
+
+    public User() {}
 
     public User(String name, String email, String password, Role role, String department, String phone) {
-        this.name = name;
-        this.email = email;
+        this.name = normalize(name);
+        this.email = normalize(email);
         this.password = password;
         this.role = role;
-        this.department = department;
-        this.phone = phone;
+        this.department = normalize(department);
+        this.phone = normalize(phone);
         this.isActive = true;
     }
+
+    // ================= HELPER METHODS =================
+
+    private String normalize(String value) {
+        return value == null ? null : value.trim();
+    }
+
+    public boolean isAdmin() {
+        return this.role == Role.ADMIN;
+    }
+
+    public boolean isStudent() {
+        return this.role == Role.STUDENT;
+    }
+
+    public boolean isStaff() {
+        return this.role == Role.STAFF;
+    }
+
+    public boolean isActiveUser() {
+        return Boolean.TRUE.equals(this.isActive);
+    }
+
+    // ================= GETTERS & SETTERS =================
 
     public UUID getId() {
         return id;
@@ -67,7 +93,7 @@ public class User {
     }
 
     public void setName(String name) {
-        this.name = name;
+        this.name = normalize(name);
     }
 
     public String getEmail() {
@@ -75,13 +101,14 @@ public class User {
     }
 
     public void setEmail(String email) {
-        this.email = email;
+        this.email = normalize(email);
     }
 
     public String getPassword() {
         return password;
     }
 
+    // IMPORTANT: always store encoded password
     public void setPassword(String password) {
         this.password = password;
     }
@@ -99,7 +126,7 @@ public class User {
     }
 
     public void setDepartment(String department) {
-        this.department = department;
+        this.department = normalize(department);
     }
 
     public String getPhone() {
@@ -107,7 +134,7 @@ public class User {
     }
 
     public void setPhone(String phone) {
-        this.phone = phone;
+        this.phone = normalize(phone);
     }
 
     public Boolean getIsActive() {
@@ -115,7 +142,7 @@ public class User {
     }
 
     public void setIsActive(Boolean active) {
-        isActive = active;
+        isActive = active != null ? active : true;
     }
 
     public OffsetDateTime getCreatedAt() {
@@ -125,6 +152,8 @@ public class User {
     public OffsetDateTime getUpdatedAt() {
         return updatedAt;
     }
+
+    // ================= DEBUG =================
 
     @Override
     public String toString() {

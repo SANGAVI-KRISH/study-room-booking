@@ -5,37 +5,68 @@ import {
   getBookingById,
   downloadBookingHistoryPdf,
 } from "../api/roomApi";
+import { useNavigate } from "react-router-dom";
 
 export default function BookingHistory() {
+  const navigate = useNavigate();
+
   const [bookings, setBookings] = useState([]);
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [filterType, setFilterType] = useState("ALL");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [loading, setLoading] = useState(true);
+  const [pageError, setPageError] = useState("");
 
   const userId = localStorage.getItem("userId");
+  const token = localStorage.getItem("token");
 
   useEffect(() => {
-    if (!userId) {
+    if (!token || !userId) {
       setLoading(false);
-      alert("User not logged in");
+      setPageError("User not logged in. Please login again.");
+      navigate("/login");
       return;
     }
 
     loadAllBookings();
-  }, [userId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, token]);
+
+  const handleAuthError = (error, fallbackMessage) => {
+    console.error(fallbackMessage, error);
+
+    const message = error?.message || fallbackMessage;
+
+    if (
+      message.toLowerCase().includes("unauthorized") ||
+      message.toLowerCase().includes("authenticated") ||
+      message.toLowerCase().includes("401")
+    ) {
+      setPageError("Session expired or unauthorized. Please login again.");
+      localStorage.removeItem("token");
+      localStorage.removeItem("role");
+      localStorage.removeItem("userId");
+      localStorage.removeItem("name");
+      setBookings([]);
+      setSelectedBooking(null);
+      navigate("/login");
+      return;
+    }
+
+    setPageError(message);
+  };
 
   const loadAllBookings = async () => {
     try {
       setLoading(true);
+      setPageError("");
+
       const data = await getBookingHistory(userId);
       setBookings(Array.isArray(data) ? data : []);
       setSelectedBooking(null);
     } catch (error) {
-      console.error("Failed to load booking history:", error);
-      alert(error.message || "Failed to load booking history");
-      setBookings([]);
+      handleAuthError(error, "Failed to load booking history");
     } finally {
       setLoading(false);
     }
@@ -44,13 +75,13 @@ export default function BookingHistory() {
   const loadPastBookings = async () => {
     try {
       setLoading(true);
+      setPageError("");
+
       const data = await getPastBookings(userId);
       setBookings(Array.isArray(data) ? data : []);
       setSelectedBooking(null);
     } catch (error) {
-      console.error("Failed to load past bookings:", error);
-      alert(error.message || "Failed to load past bookings");
-      setBookings([]);
+      handleAuthError(error, "Failed to load past bookings");
     } finally {
       setLoading(false);
     }
@@ -59,16 +90,17 @@ export default function BookingHistory() {
   const loadCompleted = async () => {
     try {
       setLoading(true);
+      setPageError("");
+
       const data = await getBookingHistory(userId);
       const filtered = (Array.isArray(data) ? data : []).filter(
         (booking) => booking.status === "COMPLETED"
       );
+
       setBookings(filtered);
       setSelectedBooking(null);
     } catch (error) {
-      console.error("Failed to load completed bookings:", error);
-      alert(error.message || "Failed to load completed bookings");
-      setBookings([]);
+      handleAuthError(error, "Failed to load completed bookings");
     } finally {
       setLoading(false);
     }
@@ -77,17 +109,19 @@ export default function BookingHistory() {
   const loadCancelled = async () => {
     try {
       setLoading(true);
+      setPageError("");
+
       const data = await getBookingHistory(userId);
       const filtered = (Array.isArray(data) ? data : []).filter(
         (booking) =>
-          booking.status === "CANCELLED" || booking.status === "AUTO_CANCELLED"
+          booking.status === "CANCELLED" ||
+          booking.status === "AUTO_CANCELLED"
       );
+
       setBookings(filtered);
       setSelectedBooking(null);
     } catch (error) {
-      console.error("Failed to load cancelled bookings:", error);
-      alert(error.message || "Failed to load cancelled bookings");
-      setBookings([]);
+      handleAuthError(error, "Failed to load cancelled bookings");
     } finally {
       setLoading(false);
     }
@@ -107,17 +141,19 @@ export default function BookingHistory() {
 
   const handleDateFilter = async () => {
     if (!startDate || !endDate) {
-      alert("Please select both start date and end date");
+      setPageError("Please select both start date and end date.");
       return;
     }
 
     if (new Date(endDate) < new Date(startDate)) {
-      alert("End date cannot be before start date");
+      setPageError("End date cannot be before start date.");
       return;
     }
 
     try {
       setLoading(true);
+      setPageError("");
+
       const data = await getBookingHistory(userId);
 
       const filtered = (Array.isArray(data) ? data : []).filter((booking) => {
@@ -133,8 +169,7 @@ export default function BookingHistory() {
       setBookings(filtered);
       setSelectedBooking(null);
     } catch (error) {
-      console.error("Failed to filter by date:", error);
-      alert(error.message || "Failed to filter by date");
+      handleAuthError(error, "Failed to filter by date");
     } finally {
       setLoading(false);
     }
@@ -144,25 +179,29 @@ export default function BookingHistory() {
     setFilterType("ALL");
     setStartDate("");
     setEndDate("");
+    setPageError("");
     await loadAllBookings();
   };
 
   const handleViewDetails = async (bookingId) => {
     try {
+      setPageError("");
       const data = await getBookingById(bookingId);
       setSelectedBooking(data);
     } catch (error) {
-      console.error("Failed to fetch booking details:", error);
-      alert(error.message || "Failed to fetch booking details");
+      handleAuthError(error, "Failed to fetch booking details");
     }
   };
 
   const handleDownloadPdf = async () => {
     try {
-      if (!userId) {
-        alert("User not logged in");
+      if (!userId || !token) {
+        setPageError("User not logged in. Please login again.");
+        navigate("/login");
         return;
       }
+
+      setPageError("");
 
       const blob = await downloadBookingHistoryPdf(userId);
       const url = window.URL.createObjectURL(blob);
@@ -176,8 +215,7 @@ export default function BookingHistory() {
 
       window.URL.revokeObjectURL(url);
     } catch (error) {
-      console.error("Failed to download booking history PDF:", error);
-      alert(error.message || "Failed to download booking history PDF");
+      handleAuthError(error, "Failed to download booking history PDF");
     }
   };
 
@@ -211,11 +249,14 @@ export default function BookingHistory() {
     });
   };
 
+  const getBookingKey = (booking) =>
+    booking.bookingId || booking.id || `${booking.startAt}-${booking.endAt}`;
+
   if (loading) {
     return (
       <div style={styles.container}>
         <h2 style={styles.heading}>Booking History</h2>
-        <p>Loading booking history...</p>
+        <p style={styles.infoText}>Loading booking history...</p>
       </div>
     );
   }
@@ -223,6 +264,8 @@ export default function BookingHistory() {
   return (
     <div style={styles.container}>
       <h2 style={styles.heading}>Booking History</h2>
+
+      {pageError && <div style={styles.errorBox}>{pageError}</div>}
 
       <div style={styles.filterRow}>
         <select
@@ -288,8 +331,8 @@ export default function BookingHistory() {
           <tbody>
             {bookings.length > 0 ? (
               bookings.map((booking) => (
-                <tr key={booking.bookingId}>
-                  <td style={styles.td}>{booking.bookingId}</td>
+                <tr key={getBookingKey(booking)}>
+                  <td style={styles.td}>{booking.bookingId || booking.id || "-"}</td>
                   <td style={styles.td}>{booking.roomName || "-"}</td>
                   <td style={styles.td}>{formatDate(booking.startAt)}</td>
                   <td style={styles.td}>{formatTime(booking.startAt)}</td>
@@ -297,7 +340,7 @@ export default function BookingHistory() {
                   <td style={styles.td}>{booking.status || "-"}</td>
                   <td style={styles.td}>
                     <button
-                      onClick={() => handleViewDetails(booking.bookingId)}
+                      onClick={() => handleViewDetails(booking.bookingId || booking.id)}
                       style={styles.viewButton}
                     >
                       View Details
@@ -320,7 +363,7 @@ export default function BookingHistory() {
         <div style={styles.detailsCard}>
           <h3 style={styles.detailsHeading}>Booking Details</h3>
 
-          <p><strong>Booking ID:</strong> {selectedBooking.bookingId}</p>
+          <p><strong>Booking ID:</strong> {selectedBooking.bookingId || selectedBooking.id || "-"}</p>
           <p><strong>Room:</strong> {selectedBooking.roomName || "-"}</p>
           <p><strong>User:</strong> {selectedBooking.userName || "-"}</p>
           <p><strong>Start:</strong> {formatDateTime(selectedBooking.startAt)}</p>
@@ -358,6 +401,18 @@ const styles = {
   heading: {
     marginBottom: "20px",
     color: "#222",
+  },
+  infoText: {
+    color: "#444",
+  },
+  errorBox: {
+    marginBottom: "16px",
+    padding: "12px 14px",
+    borderRadius: "8px",
+    backgroundColor: "#fde2e2",
+    color: "#9b1c1c",
+    border: "1px solid #f5b5b5",
+    fontWeight: "600",
   },
   filterRow: {
     display: "flex",

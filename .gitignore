@@ -38,5 +38,3 @@ build/
 *.properties
 
 src/main/resources/application.properties
-
-*.uploads\rooms

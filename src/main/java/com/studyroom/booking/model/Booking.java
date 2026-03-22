@@ -26,6 +26,11 @@ public class Booking {
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "password"})
     private User user;
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "approved_by")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "password"})
+    private User approvedBy;
+
     @Column(name = "start_at", nullable = false)
     private OffsetDateTime startAt;
 
@@ -35,10 +40,10 @@ public class Booking {
     @Column(name = "purpose")
     private String purpose;
 
-    @Column(name = "attendee_count")
+    @Column(name = "attendee_count", nullable = false)
     private Integer attendeeCount;
 
-    @Enumerated(EnumType.STRING)
+    @Convert(converter = BookingStatusConverter.class)
     @Column(name = "status", nullable = false, length = 20)
     private BookingStatus status = BookingStatus.PENDING;
 
@@ -51,63 +56,46 @@ public class Booking {
     @Column(name = "approval_time")
     private OffsetDateTime approvalTime;
 
-    @Column(name = "booked_at", insertable = false, updatable = false)
-    private OffsetDateTime bookedAt;
-
     @Column(name = "qr_token")
     private String qrToken;
-
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "approved_by")
-    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "password"})
-    private User approvedBy;
 
     @Column(name = "reminder_sent", nullable = false)
     private Boolean reminderSent = false;
 
-    @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
+    @Column(name = "booked_at", insertable = false, updatable = false)
+    private OffsetDateTime bookedAt;
+
+    @Column(name = "created_at", insertable = false, updatable = false)
     private OffsetDateTime createdAt;
 
-    @Column(name = "updated_at", nullable = false, insertable = false, updatable = false)
+    @Column(name = "updated_at", insertable = false, updatable = false)
     private OffsetDateTime updatedAt;
 
-    public Booking() {
-    }
+    public Booking() {}
 
-    public Booking(UUID id,
-                   StudyRoom room,
+    public Booking(StudyRoom room,
                    User user,
                    OffsetDateTime startAt,
                    OffsetDateTime endAt,
                    String purpose,
-                   Integer attendeeCount,
-                   BookingStatus status,
-                   String checkinStatus,
-                   String cancellationReason,
-                   OffsetDateTime approvalTime,
-                   OffsetDateTime bookedAt,
-                   String qrToken,
-                   User approvedBy,
-                   Boolean reminderSent,
-                   OffsetDateTime createdAt,
-                   OffsetDateTime updatedAt) {
-        this.id = id;
+                   Integer attendeeCount) {
         this.room = room;
         this.user = user;
         this.startAt = startAt;
         this.endAt = endAt;
         this.purpose = purpose;
         this.attendeeCount = attendeeCount;
-        this.status = status;
-        this.checkinStatus = checkinStatus;
-        this.cancellationReason = cancellationReason;
-        this.approvalTime = approvalTime;
-        this.bookedAt = bookedAt;
-        this.qrToken = qrToken;
-        this.approvedBy = approvedBy;
-        this.reminderSent = reminderSent;
-        this.createdAt = createdAt;
-        this.updatedAt = updatedAt;
+        this.status = BookingStatus.PENDING;
+        this.checkinStatus = "not_checked_in";
+        this.reminderSent = false;
+    }
+
+    // ======================================================
+    // 🔥 NEW: CENTRALIZED CANCEL METHOD
+    // ======================================================
+    public void cancel(String reason) {
+        this.status = BookingStatus.CANCELLED;
+        this.cancellationReason = reason;
     }
 
     @PrePersist
@@ -124,16 +112,28 @@ public class Booking {
         if (this.status == null) {
             this.status = BookingStatus.PENDING;
         }
+
         if (this.checkinStatus == null || this.checkinStatus.isBlank()) {
             this.checkinStatus = "not_checked_in";
         }
+
         if (this.reminderSent == null) {
             this.reminderSent = false;
         }
+
         if (this.purpose != null) {
             this.purpose = this.purpose.trim();
+            if (this.purpose.isBlank()) {
+                this.purpose = null;
+            }
+        }
+
+        if (this.attendeeCount == null) {
+            this.attendeeCount = 1;
         }
     }
+
+    // ================= BUSINESS METHODS =================
 
     public boolean isValidTimeRange() {
         return startAt != null && endAt != null && endAt.isAfter(startAt);
@@ -147,10 +147,15 @@ public class Booking {
         return startAt != null && startAt.isAfter(OffsetDateTime.now());
     }
 
+    public boolean isOngoing() {
+        OffsetDateTime now = OffsetDateTime.now();
+        return startAt != null && endAt != null
+                && (startAt.isBefore(now) || startAt.isEqual(now))
+                && endAt.isAfter(now);
+    }
+
     public long getDurationMinutes() {
-        if (!isValidTimeRange()) {
-            return 0;
-        }
+        if (!isValidTimeRange()) return 0;
         return Duration.between(startAt, endAt).toMinutes();
     }
 
@@ -162,193 +167,54 @@ public class Booking {
     }
 
     public boolean overlapsWith(Booking other) {
-        if (other == null) {
-            return false;
-        }
-        return overlapsWith(other.getStartAt(), other.getEndAt());
+        return other != null && overlapsWith(other.getStartAt(), other.getEndAt());
     }
 
-    public boolean isPending() {
-        return BookingStatus.PENDING.equals(this.status);
-    }
-
-    public boolean isApproved() {
-        return BookingStatus.APPROVED.equals(this.status);
-    }
-
-    public boolean isRejected() {
-        return BookingStatus.REJECTED.equals(this.status);
-    }
-
-    public boolean isCancelled() {
-        return BookingStatus.CANCELLED.equals(this.status);
-    }
-
-    public boolean isCompleted() {
-        return BookingStatus.COMPLETED.equals(this.status);
-    }
-
-    public boolean isAutoCancelled() {
-        return BookingStatus.AUTO_CANCELLED.equals(this.status);
-    }
-
-    public boolean isHistoryBooking() {
-        return BookingStatus.COMPLETED.equals(this.status)
-                || BookingStatus.CANCELLED.equals(this.status)
-                || BookingStatus.REJECTED.equals(this.status)
-                || BookingStatus.AUTO_CANCELLED.equals(this.status);
-    }
+    public boolean isPending() { return BookingStatus.PENDING.equals(this.status); }
+    public boolean isApproved() { return BookingStatus.APPROVED.equals(this.status); }
+    public boolean isRejected() { return BookingStatus.REJECTED.equals(this.status); }
+    public boolean isCancelled() { return BookingStatus.CANCELLED.equals(this.status); }
+    public boolean isCompleted() { return BookingStatus.COMPLETED.equals(this.status); }
+    public boolean isAutoCancelled() { return BookingStatus.AUTO_CANCELLED.equals(this.status); }
 
     public boolean isActiveBooking() {
-        return BookingStatus.PENDING.equals(this.status)
-                || BookingStatus.APPROVED.equals(this.status);
+        return isPending() || isApproved();
     }
 
-    public boolean canBeCancelled() {
-        return isActiveBooking() && endAt != null && endAt.isAfter(OffsetDateTime.now());
-    }
+    // ================= GETTERS & SETTERS =================
 
-    public boolean canBeRescheduled() {
-        return isActiveBooking() && startAt != null && startAt.isAfter(OffsetDateTime.now());
-    }
+    public UUID getId() { return id; }
+    public StudyRoom getRoom() { return room; }
+    public User getUser() { return user; }
+    public User getApprovedBy() { return approvedBy; }
+    public OffsetDateTime getStartAt() { return startAt; }
+    public OffsetDateTime getEndAt() { return endAt; }
+    public String getPurpose() { return purpose; }
+    public Integer getAttendeeCount() { return attendeeCount; }
+    public BookingStatus getStatus() { return status; }
+    public String getCheckinStatus() { return checkinStatus; }
+    public String getCancellationReason() { return cancellationReason; }
+    public OffsetDateTime getApprovalTime() { return approvalTime; }
+    public String getQrToken() { return qrToken; }
+    public Boolean getReminderSent() { return reminderSent; }
+    public OffsetDateTime getBookedAt() { return bookedAt; }
+    public OffsetDateTime getCreatedAt() { return createdAt; }
+    public OffsetDateTime getUpdatedAt() { return updatedAt; }
 
-    public boolean canBeConfirmed() {
-        return BookingStatus.PENDING.equals(this.status);
-    }
-
-    public UUID getId() {
-        return id;
-    }
-
-    public void setId(UUID id) {
-        this.id = id;
-    }
-
-    public StudyRoom getRoom() {
-        return room;
-    }
-
-    public void setRoom(StudyRoom room) {
-        this.room = room;
-    }
-
-    public User getUser() {
-        return user;
-    }
-
-    public void setUser(User user) {
-        this.user = user;
-    }
-
-    public OffsetDateTime getStartAt() {
-        return startAt;
-    }
-
-    public void setStartAt(OffsetDateTime startAt) {
-        this.startAt = startAt;
-    }
-
-    public OffsetDateTime getEndAt() {
-        return endAt;
-    }
-
-    public void setEndAt(OffsetDateTime endAt) {
-        this.endAt = endAt;
-    }
-
-    public String getPurpose() {
-        return purpose;
-    }
-
-    public void setPurpose(String purpose) {
-        this.purpose = purpose;
-    }
-
-    public Integer getAttendeeCount() {
-        return attendeeCount;
-    }
-
-    public void setAttendeeCount(Integer attendeeCount) {
-        this.attendeeCount = attendeeCount;
-    }
-
-    public BookingStatus getStatus() {
-        return status;
-    }
-
-    public void setStatus(BookingStatus status) {
-        this.status = status;
-    }
-
-    public String getCheckinStatus() {
-        return checkinStatus;
-    }
-
-    public void setCheckinStatus(String checkinStatus) {
-        this.checkinStatus = checkinStatus;
-    }
-
-    public String getCancellationReason() {
-        return cancellationReason;
-    }
-
-    public void setCancellationReason(String cancellationReason) {
-        this.cancellationReason = cancellationReason;
-    }
-
-    public OffsetDateTime getApprovalTime() {
-        return approvalTime;
-    }
-
-    public void setApprovalTime(OffsetDateTime approvalTime) {
-        this.approvalTime = approvalTime;
-    }
-
-    public OffsetDateTime getBookedAt() {
-        return bookedAt;
-    }
-
-    public void setBookedAt(OffsetDateTime bookedAt) {
-        this.bookedAt = bookedAt;
-    }
-
-    public String getQrToken() {
-        return qrToken;
-    }
-
-    public void setQrToken(String qrToken) {
-        this.qrToken = qrToken;
-    }
-
-    public User getApprovedBy() {
-        return approvedBy;
-    }
-
-    public void setApprovedBy(User approvedBy) {
-        this.approvedBy = approvedBy;
-    }
-
-    public Boolean getReminderSent() {
-        return reminderSent;
-    }
-
-    public void setReminderSent(Boolean reminderSent) {
-        this.reminderSent = reminderSent;
-    }
-
-    public OffsetDateTime getCreatedAt() {
-        return createdAt;
-    }
-
-    public void setCreatedAt(OffsetDateTime createdAt) {
-        this.createdAt = createdAt;
-    }
-
-    public OffsetDateTime getUpdatedAt() {
-        return updatedAt;
-    }
-
-    public void setUpdatedAt(OffsetDateTime updatedAt) {
-        this.updatedAt = updatedAt;
-    }
+    public void setRoom(StudyRoom room) { this.room = room; }
+    public void setUser(User user) { this.user = user; }
+    public void setApprovedBy(User approvedBy) { this.approvedBy = approvedBy; }
+    public void setStartAt(OffsetDateTime startAt) { this.startAt = startAt; }
+    public void setEndAt(OffsetDateTime endAt) { this.endAt = endAt; }
+    public void setPurpose(String purpose) { this.purpose = purpose; }
+    public void setAttendeeCount(Integer attendeeCount) { this.attendeeCount = attendeeCount; }
+    public void setStatus(BookingStatus status) { this.status = status; }
+    public void setCheckinStatus(String checkinStatus) { this.checkinStatus = checkinStatus; }
+    public void setCancellationReason(String cancellationReason) { this.cancellationReason = cancellationReason; }
+    public void setApprovalTime(OffsetDateTime approvalTime) { this.approvalTime = approvalTime; }
+    public void setQrToken(String qrToken) { this.qrToken = qrToken; }
+    public void setReminderSent(Boolean reminderSent) { this.reminderSent = reminderSent; }
+    public void setBookedAt(OffsetDateTime bookedAt) { this.bookedAt = bookedAt; }
+    public void setCreatedAt(OffsetDateTime createdAt) { this.createdAt = createdAt; }
+    public void setUpdatedAt(OffsetDateTime updatedAt) { this.updatedAt = updatedAt; }
 }

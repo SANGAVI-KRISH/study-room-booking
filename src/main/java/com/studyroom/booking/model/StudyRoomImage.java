@@ -12,7 +12,7 @@ public class StudyRoomImage {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
-    @Column(columnDefinition = "uuid", updatable = false, nullable = false)
+    @Column(name = "id", columnDefinition = "uuid", updatable = false, nullable = false)
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -20,13 +20,13 @@ public class StudyRoomImage {
     @JsonBackReference
     private StudyRoom room;
 
-    @Column(name = "image_url", nullable = false, columnDefinition = "text")
+    @Column(name = "image_url", nullable = false, columnDefinition = "TEXT")
     private String imageUrl;
 
     @Column(name = "display_order", nullable = false)
     private Integer displayOrder = 0;
 
-    @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
     public StudyRoomImage() {
@@ -36,6 +36,16 @@ public class StudyRoomImage {
         this.room = room;
         this.imageUrl = imageUrl;
         this.displayOrder = displayOrder != null ? displayOrder : 0;
+    }
+
+    @PrePersist
+    protected void onCreate() {
+        if (this.displayOrder == null) {
+            this.displayOrder = 0;
+        }
+        if (this.createdAt == null) {
+            this.createdAt = OffsetDateTime.now();
+        }
     }
 
     public UUID getId() {
@@ -76,13 +86,6 @@ public class StudyRoomImage {
 
     public void setCreatedAt(OffsetDateTime createdAt) {
         this.createdAt = createdAt;
-    }
-
-    @PrePersist
-    public void prePersist() {
-        if (displayOrder == null) {
-            displayOrder = 0;
-        }
     }
 
     @Override
