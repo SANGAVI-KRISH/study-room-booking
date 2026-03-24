@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { bookRoom } from "../api/roomApi";
 import "./RoomAvailability.css";
+import { getRoomFeedback } from "../api/feedbackApi";
+import FeedbackList from "../components/FeedbackList";
 
 const API_BASE_URL = "http://localhost:8080";
 const APP_TIMEZONE_OFFSET = "+05:30";
@@ -9,6 +11,8 @@ const BOOKING_STEP_SECONDS = 1800;
 
 export default function RoomAvailability() {
   const navigate = useNavigate();
+
+  const [roomFeedbackSummary, setRoomFeedbackSummary] = useState(null);
 
   const tamilNaduDistricts = [
     "Ariyalur",
@@ -213,6 +217,25 @@ export default function RoomAvailability() {
     loadSlotsForSelectedRoom(filters.roomId);
   }, [filters.roomId, filters.date, filters.time]);
 
+  useEffect(() => {
+    async function loadRoomFeedback() {
+      if (!selectedRoom?.id) {
+        setRoomFeedbackSummary(null);
+        return;
+      }
+
+      try {
+        const data = await getRoomFeedback(selectedRoom.id);
+        setRoomFeedbackSummary(data);
+      } catch (fetchError) {
+        console.error("Failed to load room feedback:", fetchError);
+        setRoomFeedbackSummary(null);
+      }
+    }
+
+    loadRoomFeedback();
+  }, [selectedRoom]);
+
   const hasAnyFilter = useMemo(() => {
     return Boolean(
       filters.district ||
@@ -311,100 +334,102 @@ export default function RoomAvailability() {
   };
 
   const normalizeStoredSlots = (slotList) => {
-  const list = Array.isArray(slotList) ? slotList : [];
+    const list = Array.isArray(slotList) ? slotList : [];
 
-  return list
-    .filter((slot) => slot && slot.startAt && slot.endAt && slot.isActive !== false)
-    .map((slot) => {
-      const remainingSeats = Number(
-        slot.remainingSeats ??
-          slot.remaining ??
-          slot.availableSeats ??
-          slot.seatsRemaining ??
-          slot.capacityLeft ??
-          slot.capacity ??
-          slot.seatingCapacity ??
-          1
-      );
-
-      const available =
-        slot.available !== false &&
-        slot.status !== "UNAVAILABLE" &&
-        slot.availabilityStatus !== "UNAVAILABLE" &&
-        slot.isActive !== false;
-
-      return {
-        ...slot,
-        remainingSeats,
-        available,
-        sourceType: "stored",
-      };
-    })
-    .filter((slot) => slot.available);
-};
-  const normalizeAvailableDateSlots = (payload, selectedDate) => {
-  const rawSlots =
-    payload?.slots ||
-    payload?.availableSlots ||
-    payload?.timeSlots ||
-    payload?.data ||
-    (Array.isArray(payload) ? payload : []);
-
-  const list = Array.isArray(rawSlots) ? rawSlots : [];
-
-  return list
-    .map((slot, index) => {
-      if (!slot) return null;
-
-      let startAt = slot.startAt || slot.start || null;
-      let endAt = slot.endAt || slot.end || null;
-
-      if (!startAt && slot.startTime) {
-        startAt = buildDateTimeFromDateAndTime(selectedDate, slot.startTime);
-      }
-
-      if (!endAt && slot.endTime) {
-        endAt = buildDateTimeFromDateAndTime(
-          needsNextDay(slot.startTime, slot.endTime)
-            ? addOneDay(selectedDate)
-            : selectedDate,
-          slot.endTime
+    return list
+      .filter(
+        (slot) => slot && slot.startAt && slot.endAt && slot.isActive !== false
+      )
+      .map((slot) => {
+        const remainingSeats = Number(
+          slot.remainingSeats ??
+            slot.remaining ??
+            slot.availableSeats ??
+            slot.seatsRemaining ??
+            slot.capacityLeft ??
+            slot.capacity ??
+            slot.seatingCapacity ??
+            1
         );
-      }
 
-      if (!startAt || !endAt) return null;
+        const available =
+          slot.available !== false &&
+          slot.status !== "UNAVAILABLE" &&
+          slot.availabilityStatus !== "UNAVAILABLE" &&
+          slot.isActive !== false;
 
-      const remainingSeats = Number(
-        slot.remainingSeats ??
-          slot.remaining ??
-          slot.availableSeats ??
-          slot.seatsRemaining ??
-          slot.capacityLeft ??
-          slot.capacity ??
-          slot.seatingCapacity ??
-          1
-      );
+        return {
+          ...slot,
+          remainingSeats,
+          available,
+          sourceType: "stored",
+        };
+      })
+      .filter((slot) => slot.available);
+  };
 
-      const available =
-        slot.available !== false &&
-        slot.status !== "UNAVAILABLE" &&
-        slot.availabilityStatus !== "UNAVAILABLE" &&
-        slot.isActive !== false;
+  const normalizeAvailableDateSlots = (payload, selectedDate) => {
+    const rawSlots =
+      payload?.slots ||
+      payload?.availableSlots ||
+      payload?.timeSlots ||
+      payload?.data ||
+      (Array.isArray(payload) ? payload : []);
 
-      return {
-        ...slot,
-        id: slot.id || `generated-${selectedDate}-${startAt}-${endAt}-${index}`,
-        startAt,
-        endAt,
-        remainingSeats,
-        available,
-        sourceType: "date-window",
-      };
-    })
-    .filter(Boolean)
-    .filter((slot) => slot.available);
-};
+    const list = Array.isArray(rawSlots) ? rawSlots : [];
 
+    return list
+      .map((slot, index) => {
+        if (!slot) return null;
+
+        let startAt = slot.startAt || slot.start || null;
+        let endAt = slot.endAt || slot.end || null;
+
+        if (!startAt && slot.startTime) {
+          startAt = buildDateTimeFromDateAndTime(selectedDate, slot.startTime);
+        }
+
+        if (!endAt && slot.endTime) {
+          endAt = buildDateTimeFromDateAndTime(
+            needsNextDay(slot.startTime, slot.endTime)
+              ? addOneDay(selectedDate)
+              : selectedDate,
+            slot.endTime
+          );
+        }
+
+        if (!startAt || !endAt) return null;
+
+        const remainingSeats = Number(
+          slot.remainingSeats ??
+            slot.remaining ??
+            slot.availableSeats ??
+            slot.seatsRemaining ??
+            slot.capacityLeft ??
+            slot.capacity ??
+            slot.seatingCapacity ??
+            1
+        );
+
+        const available =
+          slot.available !== false &&
+          slot.status !== "UNAVAILABLE" &&
+          slot.availabilityStatus !== "UNAVAILABLE" &&
+          slot.isActive !== false;
+
+        return {
+          ...slot,
+          id: slot.id || `generated-${selectedDate}-${startAt}-${endAt}-${index}`,
+          startAt,
+          endAt,
+          remainingSeats,
+          available,
+          sourceType: "date-window",
+        };
+      })
+      .filter(Boolean)
+      .filter((slot) => slot.available);
+  };
 
   const fetchStoredRoomSlots = async (roomId) => {
     const token = localStorage.getItem("token");
@@ -450,27 +475,6 @@ export default function RoomAvailability() {
     const data = await res.json();
     return normalizeAvailableDateSlots(data, date);
   };
-
-  const fetchRoomSlots = async (roomId, date = "") => {
-  if (!date) {
-    return fetchStoredRoomSlots(roomId);
-  }
-
-  try {
-    const dateSlots = await fetchAvailableSlotsByDate(roomId, date);
-
-    if (Array.isArray(dateSlots) && dateSlots.length > 0) {
-      return dateSlots;
-    }
-
-    const storedSlots = await fetchStoredRoomSlots(roomId);
-    return applyDateTimeFilterToSlots(storedSlots);
-  } catch (error) {
-    console.warn("Date-based slot fetch failed, falling back to stored slots:", error);
-    const storedSlots = await fetchStoredRoomSlots(roomId);
-    return applyDateTimeFilterToSlots(storedSlots);
-  }
-};
 
   const isSameDate = (dateTime, selectedDate) => {
     if (!dateTime || !selectedDate) return true;
@@ -523,14 +527,36 @@ export default function RoomAvailability() {
     });
   };
 
+  const fetchRoomSlots = async (roomId, date = "") => {
+    if (!date) {
+      return fetchStoredRoomSlots(roomId);
+    }
+
+    try {
+      const dateSlots = await fetchAvailableSlotsByDate(roomId, date);
+
+      if (Array.isArray(dateSlots) && dateSlots.length > 0) {
+        return dateSlots;
+      }
+
+      const storedSlots = await fetchStoredRoomSlots(roomId);
+      return applyDateTimeFilterToSlots(storedSlots);
+    } catch (fetchError) {
+      console.warn(
+        "Date-based slot fetch failed, falling back to stored slots:",
+        fetchError
+      );
+      const storedSlots = await fetchStoredRoomSlots(roomId);
+      return applyDateTimeFilterToSlots(storedSlots);
+    }
+  };
+
   const loadSlotsForSelectedRoom = async (roomId) => {
     try {
       setSlotLoading(true);
       clearAlerts();
 
-      const cacheKey = filters.date
-        ? `${roomId}_${filters.date}`
-        : `${roomId}_all`;
+      const cacheKey = filters.date ? `${roomId}_${filters.date}` : `${roomId}_all`;
 
       let slotsForRoom = roomSlotsMap[cacheKey];
 
@@ -629,70 +655,65 @@ export default function RoomAvailability() {
   };
 
   const bookingModalSlots = useMemo(() => {
-  const roomId = selectedRoom?.id;
-  if (!roomId) return [];
+    const roomId = selectedRoom?.id;
+    if (!roomId) return [];
 
-  const cacheKey = filters.date
-    ? `${roomId}_${filters.date}`
-    : `${roomId}_all`;
+    const cacheKey = filters.date ? `${roomId}_${filters.date}` : `${roomId}_all`;
 
-  const slotsForRoom = roomSlotsMap[cacheKey] || [];
-  const filteredSlots = applyDateTimeFilterToSlots(slotsForRoom);
+    const slotsForRoom = roomSlotsMap[cacheKey] || [];
+    const filteredSlots = applyDateTimeFilterToSlots(slotsForRoom);
 
-  return filteredSlots.map((slot) => {
-    const fallbackCapacity = Number(
-      selectedRoom?.seatingCapacity ??
+    return filteredSlots.map((slot) => {
+      const fallbackCapacity = Number(
+        selectedRoom?.seatingCapacity ?? selectedRoom?.capacity ?? 1
+      );
+
+      const normalizedRemainingSeats = Number(
+        slot.remainingSeats ??
+          slot.remaining ??
+          slot.availableSeats ??
+          slot.seatsRemaining ??
+          slot.capacityLeft ??
+          fallbackCapacity
+      );
+
+      return {
+        ...slot,
+        remainingSeats:
+          normalizedRemainingSeats > 0 ? normalizedRemainingSeats : fallbackCapacity,
+      };
+    });
+  }, [selectedRoom, roomSlotsMap, filters.date, filters.time]);
+
+  const selectedWindow = useMemo(() => {
+    return (
+      bookingModalSlots.find(
+        (slot) => String(slot.id) === String(bookingForm.selectedWindowId)
+      ) || null
+    );
+  }, [bookingModalSlots, bookingForm.selectedWindowId]);
+
+  const attendeeCountNumber = useMemo(() => {
+    const parsed = Number(bookingForm.attendeeCount);
+    if (Number.isNaN(parsed) || parsed < 1) return 1;
+    return parsed;
+  }, [bookingForm.attendeeCount]);
+
+  const initialRemainingSeats = useMemo(() => {
+    if (!selectedWindow) return null;
+
+    return Number(
+      selectedWindow.remainingSeats ??
+        selectedRoom?.seatingCapacity ??
         selectedRoom?.capacity ??
         1
     );
+  }, [selectedWindow, selectedRoom]);
 
-    const normalizedRemainingSeats = Number(
-      slot.remainingSeats ??
-        slot.remaining ??
-        slot.availableSeats ??
-        slot.seatsRemaining ??
-        slot.capacityLeft ??
-        fallbackCapacity
-    );
-
-    return {
-      ...slot,
-      remainingSeats:
-        normalizedRemainingSeats > 0 ? normalizedRemainingSeats : fallbackCapacity,
-    };
-  });
-}, [selectedRoom, roomSlotsMap, filters.date, filters.time]);
-
-  const selectedWindow = useMemo(() => {
-  return (
-    bookingModalSlots.find(
-      (slot) => String(slot.id) === String(bookingForm.selectedWindowId)
-    ) || null
-  );
-}, [bookingModalSlots, bookingForm.selectedWindowId]);
-
-const attendeeCountNumber = useMemo(() => {
-  const parsed = Number(bookingForm.attendeeCount);
-  if (Number.isNaN(parsed) || parsed < 1) return 1;
-  return parsed;
-}, [bookingForm.attendeeCount]);
-
-const initialRemainingSeats = useMemo(() => {
-  if (!selectedWindow) return null;
-
-  return Number(
-    selectedWindow.remainingSeats ??
-      selectedRoom?.seatingCapacity ??
-      selectedRoom?.capacity ??
-      1
-  );
-}, [selectedWindow, selectedRoom]);
-
-const remainingSeatsAfterSelection = useMemo(() => {
-  if (initialRemainingSeats === null) return null;
-  return Math.max(initialRemainingSeats - attendeeCountNumber, 0);
-}, [initialRemainingSeats, attendeeCountNumber]);
-
+  const remainingSeatsAfterSelection = useMemo(() => {
+    if (initialRemainingSeats === null) return null;
+    return Math.max(initialRemainingSeats - attendeeCountNumber, 0);
+  }, [initialRemainingSeats, attendeeCountNumber]);
 
   const selectedCustomRange = useMemo(() => {
     if (!bookingForm.startAt || !bookingForm.endAt) return null;
@@ -709,184 +730,189 @@ const remainingSeatsAfterSelection = useMemo(() => {
   }, [bookingForm.startAt, bookingForm.endAt]);
 
   const handleBookingInputChange = (e) => {
-  const { name, value } = e.target;
+    const { name, value } = e.target;
 
-  if (name === "selectedWindowId") {
-    const nextWindow =
-      bookingModalSlots.find((slot) => String(slot.id) === String(value)) ||
-      null;
+    if (name === "selectedWindowId") {
+      const nextWindow =
+        bookingModalSlots.find((slot) => String(slot.id) === String(value)) ||
+        null;
 
-    if (!nextWindow) {
+      if (!nextWindow) {
+        setBookingForm((prev) => ({
+          ...prev,
+          selectedWindowId: "",
+          startAt: "",
+          endAt: "",
+          attendeeCount: "1",
+        }));
+        return;
+      }
+
+      const minStartValue = getMinBookableStartInput(nextWindow);
+      const windowEndValue = getWindowEndInput(nextWindow);
+
+      const maxSeats = Number(
+        nextWindow.remainingSeats ??
+          selectedRoom?.seatingCapacity ??
+          selectedRoom?.capacity ??
+          1
+      );
+
       setBookingForm((prev) => ({
         ...prev,
-        selectedWindowId: "",
-        startAt: "",
-        endAt: "",
-        attendeeCount: "1",
+        selectedWindowId: value,
+        startAt: minStartValue,
+        endAt: windowEndValue,
+        attendeeCount: String(
+          Math.min(
+            Math.max(Number(prev.attendeeCount || 1), 1),
+            Math.max(maxSeats, 1)
+          )
+        ),
       }));
       return;
     }
 
-    const minStartValue = getMinBookableStartInput(nextWindow);
-    const windowEndValue = getWindowEndInput(nextWindow);
+    if (name === "attendeeCount") {
+      if (value === "") {
+        setBookingForm((prev) => ({
+          ...prev,
+          attendeeCount: "1",
+        }));
+        return;
+      }
 
-    const maxSeats = Number(
-      nextWindow.remainingSeats ??
-        selectedRoom?.seatingCapacity ??
-        selectedRoom?.capacity ??
-        1
-    );
+      let nextCount = Number(value);
+      if (Number.isNaN(nextCount)) return;
 
-    setBookingForm((prev) => ({
-      ...prev,
-      selectedWindowId: value,
-      startAt: minStartValue,
-      endAt: windowEndValue,
-      attendeeCount: String(
-        Math.min(Math.max(Number(prev.attendeeCount || 1), 1), Math.max(maxSeats, 1))
-      ),
-    }));
-    return;
-  }
+      if (nextCount < 1) nextCount = 1;
 
-  if (name === "attendeeCount") {
-    if (value === "") {
+      const maxSeats = Number(
+        selectedWindow?.remainingSeats ??
+          selectedRoom?.seatingCapacity ??
+          selectedRoom?.capacity ??
+          1
+      );
+
+      if (maxSeats > 0) {
+        nextCount = Math.min(nextCount, maxSeats);
+      }
+
       setBookingForm((prev) => ({
         ...prev,
-        attendeeCount: "1",
+        attendeeCount: String(nextCount),
       }));
       return;
     }
 
-    let nextCount = Number(value);
-    if (Number.isNaN(nextCount)) return;
-
-    if (nextCount < 1) nextCount = 1;
-
-    const maxSeats = Number(
-      selectedWindow?.remainingSeats ??
-        selectedRoom?.seatingCapacity ??
-        selectedRoom?.capacity ??
-        1
-    );
-
-    if (maxSeats > 0) {
-      nextCount = Math.min(nextCount, maxSeats);
-    }
-
     setBookingForm((prev) => ({
       ...prev,
-      attendeeCount: String(nextCount),
+      [name]: value,
     }));
-    return;
-  }
-
-  setBookingForm((prev) => ({
-    ...prev,
-    [name]: value,
-  }));
-};
+  };
 
   const handleReset = () => {
     setFilters(initialFilters);
     setRooms(allRooms);
     setSelectedRoomSlots([]);
     setLastBookingDetails(null);
+    setRoomFeedbackSummary(null);
     clearAlerts();
     closeBookingModal();
   };
 
   const validateBookingForm = () => {
-  if (!selectedRoom || !selectedRoom.id) {
-    showError("Selected room is invalid.");
-    return false;
-  }
+    if (!selectedRoom || !selectedRoom.id) {
+      showError("Selected room is invalid.");
+      return false;
+    }
 
-  if (!bookingForm.selectedWindowId) {
-    showError("Please select an available slot window.");
-    return false;
-  }
+    if (!bookingForm.selectedWindowId) {
+      showError("Please select an available slot window.");
+      return false;
+    }
 
-  if (!selectedWindow) {
-    showError("Selected slot window is invalid.");
-    return false;
-  }
+    if (!selectedWindow) {
+      showError("Selected slot window is invalid.");
+      return false;
+    }
 
-  if (!bookingForm.startAt || !bookingForm.endAt) {
-    showError("Please select booking start and end time.");
-    return false;
-  }
+    if (!bookingForm.startAt || !bookingForm.endAt) {
+      showError("Please select booking start and end time.");
+      return false;
+    }
 
-  const bookingStart = new Date(inputValueToIsoWithOffset(bookingForm.startAt));
-  const bookingEnd = new Date(inputValueToIsoWithOffset(bookingForm.endAt));
-  const windowStart = new Date(selectedWindow.startAt);
-  const windowEnd = new Date(selectedWindow.endAt);
+    const bookingStart = new Date(inputValueToIsoWithOffset(bookingForm.startAt));
+    const bookingEnd = new Date(inputValueToIsoWithOffset(bookingForm.endAt));
+    const windowStart = new Date(selectedWindow.startAt);
+    const windowEnd = new Date(selectedWindow.endAt);
 
-  if (
-    Number.isNaN(bookingStart.getTime()) ||
-    Number.isNaN(bookingEnd.getTime()) ||
-    Number.isNaN(windowStart.getTime()) ||
-    Number.isNaN(windowEnd.getTime())
-  ) {
-    showError("Invalid booking date or time.");
-    return false;
-  }
+    if (
+      Number.isNaN(bookingStart.getTime()) ||
+      Number.isNaN(bookingEnd.getTime()) ||
+      Number.isNaN(windowStart.getTime()) ||
+      Number.isNaN(windowEnd.getTime())
+    ) {
+      showError("Invalid booking date or time.");
+      return false;
+    }
 
-  if (bookingStart >= bookingEnd) {
-    showError("End time must be after start time.");
-    return false;
-  }
+    if (bookingStart >= bookingEnd) {
+      showError("End time must be after start time.");
+      return false;
+    }
 
-  if (bookingStart < windowStart || bookingEnd > windowEnd) {
-    showError("Booking time must be inside the selected available window.");
-    return false;
-  }
+    if (bookingStart < windowStart || bookingEnd > windowEnd) {
+      showError("Booking time must be inside the selected available window.");
+      return false;
+    }
 
-  const durationMinutes =
-    (bookingEnd.getTime() - bookingStart.getTime()) / 60000;
+    const durationMinutes =
+      (bookingEnd.getTime() - bookingStart.getTime()) / 60000;
 
-  if (durationMinutes <= 0) {
-    showError("Booking duration must be greater than 0.");
-    return false;
-  }
+    if (durationMinutes <= 0) {
+      showError("Booking duration must be greater than 0.");
+      return false;
+    }
 
-  if (
-    bookingStart.getMinutes() % 30 !== 0 ||
-    bookingEnd.getMinutes() % 30 !== 0
-  ) {
-    showError("Booking time must be in 30-minute steps.");
-    return false;
-  }
+    if (
+      bookingStart.getMinutes() % 30 !== 0 ||
+      bookingEnd.getMinutes() % 30 !== 0
+    ) {
+      showError("Booking time must be in 30-minute steps.");
+      return false;
+    }
 
-  const attendeeCountNum = Number(bookingForm.attendeeCount);
+    const attendeeCountNum = Number(bookingForm.attendeeCount);
 
-  if (
-    !bookingForm.attendeeCount ||
-    Number.isNaN(attendeeCountNum) ||
-    attendeeCountNum <= 0
-  ) {
-    showError("Attendee count must be greater than 0.");
-    return false;
-  }
+    if (
+      !bookingForm.attendeeCount ||
+      Number.isNaN(attendeeCountNum) ||
+      attendeeCountNum <= 0
+    ) {
+      showError("Attendee count must be greater than 0.");
+      return false;
+    }
 
-  const maxAllowedSeats = Number(
-    selectedWindow?.remainingSeats ??
-      selectedWindow?.remaining ??
-      selectedWindow?.availableSeats ??
-      selectedRoom?.seatingCapacity ??
-      selectedRoom?.capacity ??
-      1
-  );
-
-  if (attendeeCountNum > maxAllowedSeats) {
-    showError(
-      `Attendee count cannot exceed remaining seats (${maxAllowedSeats}).`
+    const maxAllowedSeats = Number(
+      selectedWindow?.remainingSeats ??
+        selectedWindow?.remaining ??
+        selectedWindow?.availableSeats ??
+        selectedRoom?.seatingCapacity ??
+        selectedRoom?.capacity ??
+        1
     );
-    return false;
-  }
 
-  return true;
-};
+    if (attendeeCountNum > maxAllowedSeats) {
+      showError(
+        `Attendee count cannot exceed remaining seats (${maxAllowedSeats}).`
+      );
+      return false;
+    }
+
+    return true;
+  };
+
   const handleSearch = async (e) => {
     e.preventDefault();
     clearAlerts();
@@ -977,9 +1003,7 @@ const remainingSeatsAfterSelection = useMemo(() => {
       const slotResults = await Promise.all(
         locallyFilteredRooms.map(async (room) => {
           try {
-            const cacheKey = filters.date
-              ? `${room.id}_${filters.date}`
-              : `${room.id}_all`;
+            const cacheKey = filters.date ? `${room.id}_${filters.date}` : `${room.id}_all`;
 
             const existing = roomSlotsMap[cacheKey];
             const slotList =
@@ -994,9 +1018,7 @@ const remainingSeatsAfterSelection = useMemo(() => {
             console.error(`Slot fetch failed for room ${room.id}:`, err);
             return {
               room,
-              cacheKey: filters.date
-                ? `${room.id}_${filters.date}`
-                : `${room.id}_all`,
+              cacheKey: filters.date ? `${room.id}_${filters.date}` : `${room.id}_all`,
               slots: [],
             };
           }
@@ -1065,9 +1087,7 @@ const remainingSeatsAfterSelection = useMemo(() => {
     try {
       setSlotLoading(true);
 
-      const cacheKey = filters.date
-        ? `${room.id}_${filters.date}`
-        : `${room.id}_all`;
+      const cacheKey = filters.date ? `${room.id}_${filters.date}` : `${room.id}_all`;
 
       let slotList = roomSlotsMap[cacheKey];
       if (!slotList) {
@@ -1104,6 +1124,7 @@ const remainingSeatsAfterSelection = useMemo(() => {
     setBookingModalOpen(false);
     setSelectedRoom(null);
     setBookingForm(initialBookingForm);
+    setRoomFeedbackSummary(null);
   };
 
   const formatDateTime = (dateTime) => {
@@ -1160,123 +1181,118 @@ const remainingSeatsAfterSelection = useMemo(() => {
   };
 
   const handleConfirmBooking = async () => {
-  const token = localStorage.getItem("token");
-  const userId = localStorage.getItem("userId");
+    const token = localStorage.getItem("token");
+    const userId = localStorage.getItem("userId");
 
-  clearAlerts();
+    clearAlerts();
 
-  if (!token) {
-    showError("Please login first to book a room.");
-    return;
-  }
-
-  if (!userId) {
-    showError("User ID not found. Please login again.");
-    return;
-  }
-
-  if (!validateBookingForm()) return;
-
-  try {
-    setBookingRoomId(selectedRoom.id);
-
-    const bookingStartIso = inputValueToIsoWithOffset(bookingForm.startAt);
-    const bookingEndIso = inputValueToIsoWithOffset(bookingForm.endAt);
-
-    const attendeeCount = Number(bookingForm.attendeeCount || 1);
-
-    const bookingData = {
-      roomId: selectedRoom.id,
-      userId,
-      timeSlotId: isUuid(bookingForm.selectedWindowId)
-        ? bookingForm.selectedWindowId
-        : null,
-      startAt: bookingStartIso,
-      endAt: bookingEndIso,
-      purpose: bookingForm.purpose?.trim() || null,
-      attendeeCount,
-    };
-
-    await bookRoom(bookingData);
-
-    const refreshedSlots = await fetchRoomSlots(
-      selectedRoom.id,
-      filters.date
-    );
-
-    const refreshCacheKey = filters.date
-      ? `${selectedRoom.id}_${filters.date}`
-      : `${selectedRoom.id}_all`;
-
-    setRoomSlotsMap((prev) => ({
-      ...prev,
-      [refreshCacheKey]: refreshedSlots,
-    }));
-
-    const refreshedFilteredSlots = applyDateTimeFilterToSlots(refreshedSlots);
-    setSelectedRoomSlots(refreshedFilteredSlots);
-
-    const start = new Date(bookingStartIso);
-    const end = new Date(bookingEndIso);
-    const durationMs = end.getTime() - start.getTime();
-    const durationHours = durationMs > 0 ? durationMs / (1000 * 60 * 60) : 0;
-
-    const feePerHour = Number(selectedRoom.feePerHour || 0);
-    const totalFee = durationHours * feePerHour * attendeeCount;
-
-    const initialSeatCount = Number(
-      selectedWindow?.remainingSeats ??
-        selectedWindow?.remaining ??
-        selectedWindow?.availableSeats ??
-        selectedRoom?.seatingCapacity ??
-        selectedRoom?.capacity ??
-        1
-    );
-
-    setLastBookingDetails({
-      roomName: getRoomTitle(selectedRoom),
-      district: selectedRoom.district || "-",
-      location: selectedRoom.location || "-",
-      facilities: selectedRoom.facilities || "-",
-      capacity: selectedRoom.seatingCapacity || "-",
-      slotDate: formatDateOnly(bookingStartIso),
-      startAt: formatDateTime(bookingStartIso),
-      endAt: formatDateTime(bookingEndIso),
-      timeRange: `${formatTimeOnly(bookingStartIso)} - ${formatTimeOnly(
-        bookingEndIso
-      )}`,
-      attendeeCount,
-      purpose: bookingForm.purpose?.trim() || "-",
-      durationHours,
-      totalFee,
-      remainingSeatsAfter:
-        initialSeatCount >= 0
-          ? Math.max(initialSeatCount - attendeeCount, 0)
-          : "-",
-      status:
-        selectedRoom.approvalRequired === true
-          ? "Pending Approval"
-          : "Booked",
-      selectedWindow: selectedWindow ? formatWindowLabel(selectedWindow) : "-",
-    });
-
-    closeBookingModal();
-    showSuccess("Room booked successfully.");
-  } catch (err) {
-    console.error("Booking error:", err);
-
-    if (
-      err?.message?.toLowerCase().includes("unauthorized") ||
-      err?.message?.includes("401")
-    ) {
-      showError("Unauthorized. Please login again.");
-    } else {
-      showError(err.message || "Failed to book room.");
+    if (!token) {
+      showError("Please login first to book a room.");
+      return;
     }
-  } finally {
-    setBookingRoomId(null);
-  }
-};
+
+    if (!userId) {
+      showError("User ID not found. Please login again.");
+      return;
+    }
+
+    if (!validateBookingForm()) return;
+
+    try {
+      setBookingRoomId(selectedRoom.id);
+
+      const bookingStartIso = inputValueToIsoWithOffset(bookingForm.startAt);
+      const bookingEndIso = inputValueToIsoWithOffset(bookingForm.endAt);
+
+      const attendeeCount = Number(bookingForm.attendeeCount || 1);
+
+      const bookingData = {
+        roomId: selectedRoom.id,
+        userId,
+        timeSlotId: isUuid(bookingForm.selectedWindowId)
+          ? bookingForm.selectedWindowId
+          : null,
+        startAt: bookingStartIso,
+        endAt: bookingEndIso,
+        purpose: bookingForm.purpose?.trim() || null,
+        attendeeCount,
+      };
+
+      await bookRoom(bookingData);
+
+      const refreshedSlots = await fetchRoomSlots(selectedRoom.id, filters.date);
+
+      const refreshCacheKey = filters.date
+        ? `${selectedRoom.id}_${filters.date}`
+        : `${selectedRoom.id}_all`;
+
+      setRoomSlotsMap((prev) => ({
+        ...prev,
+        [refreshCacheKey]: refreshedSlots,
+      }));
+
+      const refreshedFilteredSlots = applyDateTimeFilterToSlots(refreshedSlots);
+      setSelectedRoomSlots(refreshedFilteredSlots);
+
+      const start = new Date(bookingStartIso);
+      const end = new Date(bookingEndIso);
+      const durationMs = end.getTime() - start.getTime();
+      const durationHours = durationMs > 0 ? durationMs / (1000 * 60 * 60) : 0;
+
+      const feePerHour = Number(selectedRoom.feePerHour || 0);
+      const totalFee = durationHours * feePerHour * attendeeCount;
+
+      const initialSeatCount = Number(
+        selectedWindow?.remainingSeats ??
+          selectedWindow?.remaining ??
+          selectedWindow?.availableSeats ??
+          selectedRoom?.seatingCapacity ??
+          selectedRoom?.capacity ??
+          1
+      );
+
+      setLastBookingDetails({
+        roomName: getRoomTitle(selectedRoom),
+        district: selectedRoom.district || "-",
+        location: selectedRoom.location || "-",
+        facilities: selectedRoom.facilities || "-",
+        capacity: selectedRoom.seatingCapacity || "-",
+        slotDate: formatDateOnly(bookingStartIso),
+        startAt: formatDateTime(bookingStartIso),
+        endAt: formatDateTime(bookingEndIso),
+        timeRange: `${formatTimeOnly(bookingStartIso)} - ${formatTimeOnly(
+          bookingEndIso
+        )}`,
+        attendeeCount,
+        purpose: bookingForm.purpose?.trim() || "-",
+        durationHours,
+        totalFee,
+        remainingSeatsAfter:
+          initialSeatCount >= 0
+            ? Math.max(initialSeatCount - attendeeCount, 0)
+            : "-",
+        status:
+          selectedRoom.approvalRequired === true ? "Pending Approval" : "Booked",
+        selectedWindow: selectedWindow ? formatWindowLabel(selectedWindow) : "-",
+      });
+
+      closeBookingModal();
+      showSuccess("Room booked successfully.");
+    } catch (err) {
+      console.error("Booking error:", err);
+
+      if (
+        err?.message?.toLowerCase().includes("unauthorized") ||
+        err?.message?.includes("401")
+      ) {
+        showError("Unauthorized. Please login again.");
+      } else {
+        showError(err.message || "Failed to book room.");
+      }
+    } finally {
+      setBookingRoomId(null);
+    }
+  };
 
   const normalizeImagePath = (url) => {
     if (!url || typeof url !== "string") return "";
@@ -1450,29 +1466,27 @@ const remainingSeatsAfterSelection = useMemo(() => {
   };
 
   const bookingSummary = useMemo(() => {
-  if (!selectedRoom || !selectedCustomRange) {
+    if (!selectedRoom || !selectedCustomRange) {
+      return {
+        durationHours: 0,
+        totalFee: 0,
+      };
+    }
+
+    const start = new Date(selectedCustomRange.startAt);
+    const end = new Date(selectedCustomRange.endAt);
+
+    const durationMs = end.getTime() - start.getTime();
+    const durationHours = durationMs > 0 ? durationMs / (1000 * 60 * 60) : 0;
+
+    const feePerHour = Number(selectedRoom.feePerHour || 0);
+    const totalFee = durationHours * feePerHour * attendeeCountNumber;
+
     return {
-      durationHours: 0,
-      totalFee: 0,
+      durationHours,
+      totalFee,
     };
-  }
-
-  const start = new Date(selectedCustomRange.startAt);
-  const end = new Date(selectedCustomRange.endAt);
-
-  const durationMs = end.getTime() - start.getTime();
-  const durationHours = durationMs > 0 ? durationMs / (1000 * 60 * 60) : 0;
-
-  const feePerHour = Number(selectedRoom.feePerHour || 0);
-  const totalFee = durationHours * feePerHour * attendeeCountNumber;
-
-  return {
-    durationHours,
-    totalFee,
-  };
-}, [selectedRoom, selectedCustomRange, attendeeCountNumber]);
-
-  
+  }, [selectedRoom, selectedCustomRange, attendeeCountNumber]);
 
   return (
     <div className="room-page">
@@ -1504,8 +1518,7 @@ const remainingSeatsAfterSelection = useMemo(() => {
             <div className="room-formHeader">
               <h2 className="room-formTitle">Last Booking Details</h2>
               <p className="room-formSubtitle">
-                Full booking information including selected slot and room
-                details.
+                Full booking information including selected slot and room details.
               </p>
             </div>
 
@@ -1526,8 +1539,7 @@ const remainingSeatsAfterSelection = useMemo(() => {
                 <strong>Capacity:</strong> {lastBookingDetails.capacity}
               </p>
               <p>
-                <strong>Selected Window:</strong>{" "}
-                {lastBookingDetails.selectedWindow}
+                <strong>Selected Window:</strong> {lastBookingDetails.selectedWindow}
               </p>
               <p>
                 <strong>Date:</strong> {lastBookingDetails.slotDate}
@@ -1542,15 +1554,13 @@ const remainingSeatsAfterSelection = useMemo(() => {
                 <strong>Time Range:</strong> {lastBookingDetails.timeRange}
               </p>
               <p>
-                <strong>Attendee Count:</strong>{" "}
-                {lastBookingDetails.attendeeCount}
+                <strong>Attendee Count:</strong> {lastBookingDetails.attendeeCount}
               </p>
               <p>
                 <strong>Purpose:</strong> {lastBookingDetails.purpose}
               </p>
               <p>
-                <strong>Duration:</strong> {lastBookingDetails.durationHours}{" "}
-                hour(s)
+                <strong>Duration:</strong> {lastBookingDetails.durationHours} hour(s)
               </p>
               <p>
                 <strong>Total Fee:</strong> ₹
@@ -1732,9 +1742,7 @@ const remainingSeatsAfterSelection = useMemo(() => {
               const primaryImage = getPrimaryImage(room);
               const isSelected = String(filters.roomId) === String(room.id);
 
-              const cacheKey = filters.date
-                ? `${room.id}_${filters.date}`
-                : `${room.id}_all`;
+              const cacheKey = filters.date ? `${room.id}_${filters.date}` : `${room.id}_all`;
 
               const allSlotsForRoom = roomSlotsMap[cacheKey] || [];
               const roomFilteredSlots = isSelected
@@ -1815,8 +1823,7 @@ const remainingSeatsAfterSelection = useMemo(() => {
                       <strong>Selected Time:</strong> {filters.time || "-"}
                     </p>
                     <p>
-                      <strong>Available Windows:</strong>{" "}
-                      {roomFilteredSlots.length}
+                      <strong>Available Windows:</strong> {roomFilteredSlots.length}
                     </p>
                   </div>
 
@@ -1909,8 +1916,7 @@ const remainingSeatsAfterSelection = useMemo(() => {
                 <strong>Facilities:</strong> {selectedRoom.facilities || "-"}
               </p>
               <p>
-                <strong>Capacity:</strong>{" "}
-                {selectedRoom.seatingCapacity || "-"} seats
+                <strong>Capacity:</strong> {selectedRoom.seatingCapacity || "-"} seats
               </p>
               <p>
                 <strong>Selected Date Filter:</strong> {filters.date || "-"}
@@ -1922,6 +1928,21 @@ const remainingSeatsAfterSelection = useMemo(() => {
                 <strong>Approval Required:</strong>{" "}
                 {selectedRoom.approvalRequired ? "Yes" : "No"}
               </p>
+            </div>
+
+            <div
+              style={{
+                marginBottom: "16px",
+                padding: "14px",
+                background: "#f8fafc",
+                border: "1px solid #e2e8f0",
+                borderRadius: "12px",
+              }}
+            >
+              <h4 style={{ margin: "0 0 10px 0", color: "#1e293b" }}>
+                Room Feedback
+              </h4>
+              <FeedbackList summary={roomFeedbackSummary} />
             </div>
 
             <div className="room-formGrid">
@@ -1936,8 +1957,7 @@ const remainingSeatsAfterSelection = useMemo(() => {
                   <option value="">Select Window</option>
                   {bookingModalSlots.map((slot) => (
                     <option key={slot.id} value={slot.id}>
-                      {formatWindowLabel(slot)} | Remaining:{" "}
-                      {slot.remainingSeats ?? "-"}
+                      {formatWindowLabel(slot)} | Remaining: {slot.remainingSeats ?? "-"}
                     </option>
                   ))}
                 </select>
@@ -1996,7 +2016,11 @@ const remainingSeatsAfterSelection = useMemo(() => {
                   type="text"
                   value={
                     selectedWindow
-                      ? String(remainingSeatsAfterSelection ?? initialRemainingSeats ?? "-")
+                      ? String(
+                          remainingSeatsAfterSelection ??
+                            initialRemainingSeats ??
+                            "-"
+                        )
                       : "Select window first"
                   }
                   className="room-input"

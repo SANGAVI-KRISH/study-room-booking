@@ -7,7 +7,7 @@ export default function AdminDashboard() {
   const navigate = useNavigate();
 
   const name = localStorage.getItem("name") || "Admin";
-  const role = localStorage.getItem("role");
+  const role = (localStorage.getItem("role") || "").trim().toUpperCase();
 
   const [dashboardStats, setDashboardStats] = useState({
     totalRooms: 0,
@@ -127,7 +127,9 @@ export default function AdminDashboard() {
 
               <div style={styles.statCard}>
                 <h3 style={styles.statTitle}>Cancelled Bookings</h3>
-                <p style={styles.statValue}>{dashboardStats.cancelledBookings}</p>
+                <p style={styles.statValue}>
+                  {dashboardStats.cancelledBookings}
+                </p>
               </div>
 
               <div style={styles.infoCard}>
@@ -145,7 +147,9 @@ export default function AdminDashboard() {
               <h3 style={styles.trendTitle}>Room Usage Trends</h3>
 
               {dashboardStats.roomUsageTrends.length === 0 ? (
-                <p style={styles.noDataText}>No room usage trend data available.</p>
+                <p style={styles.noDataText}>
+                  No room usage trend data available.
+                </p>
               ) : (
                 <div style={styles.tableWrapper}>
                   <table style={styles.table}>
@@ -185,31 +189,33 @@ export default function AdminDashboard() {
             Go to Manage Rooms
           </Link>
         </div>
-        <div style={styles.card}>
-  <h3 style={styles.cardTitle}>Time Slot Management</h3>
-  <p style={styles.cardText}>
-    Configure room timings, slot duration, and maintenance blocks.
-  </p>
-  <button
-    style={styles.buttonAsButton}
-    onClick={() => navigate("/manage-time-slots")}
-  >
-    Manage Time Slots
-  </button>
-</div>
 
-<div style={styles.card}>
-  <h3 style={styles.cardTitle}>View Room Slots</h3>
-  <p style={styles.cardText}>
-    Check available time slots for rooms before booking.
-  </p>
-  <button
-    style={styles.buttonAsButton}
-    onClick={() => navigate("/room-slots")}
-  >
-    View Slots
-  </button>
-</div>
+        <div style={styles.card}>
+          <h3 style={styles.cardTitle}>Time Slot Management</h3>
+          <p style={styles.cardText}>
+            Configure room timings, slot duration, and maintenance blocks.
+          </p>
+          <button
+            style={styles.buttonAsButton}
+            onClick={() => navigate("/manage-time-slots")}
+          >
+            Manage Time Slots
+          </button>
+        </div>
+
+        <div style={styles.card}>
+          <h3 style={styles.cardTitle}>View Room Slots</h3>
+          <p style={styles.cardText}>
+            Check available time slots for rooms before booking.
+          </p>
+          <button
+            style={styles.buttonAsButton}
+            onClick={() => navigate("/room-slots")}
+          >
+            View Slots
+          </button>
+        </div>
+
         <div style={styles.card}>
           <h3 style={styles.cardTitle}>Manage Users</h3>
           <p style={styles.cardText}>
@@ -225,7 +231,7 @@ export default function AdminDashboard() {
           </p>
           <button
             style={styles.buttonAsButton}
-            onClick={() => navigate("/admin/bookings")}
+            onClick={() => navigate("/booking-history")}
           >
             Manage Bookings
           </button>
@@ -241,6 +247,19 @@ export default function AdminDashboard() {
             onClick={() => navigate("/admin/booking-approval")}
           >
             View Requests
+          </button>
+        </div>
+
+        <div style={styles.card}>
+          <h3 style={styles.cardTitle}>View Feedback</h3>
+          <p style={styles.cardText}>
+            View ratings, comments, and maintenance issues submitted by students.
+          </p>
+          <button
+            style={styles.buttonAsButton}
+            onClick={() => navigate("/admin/feedback")}
+          >
+            Open Feedback
           </button>
         </div>
 

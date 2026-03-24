@@ -29,7 +29,7 @@ public class JwtUtil {
         Date expiryDate = new Date(now.getTime() + JWT_EXPIRATION_MS);
 
         return Jwts.builder()
-                .subject(email.trim())
+                .subject(email.trim().toLowerCase())
                 .claim("role", role)
                 .issuedAt(now)
                 .expiration(expiryDate)
@@ -38,7 +38,8 @@ public class JwtUtil {
     }
 
     public String extractEmail(String token) {
-        return extractAllClaims(token).getSubject();
+        String subject = extractAllClaims(token).getSubject();
+        return subject == null ? null : subject.trim().toLowerCase();
     }
 
     public String extractRole(String token) {
@@ -69,8 +70,10 @@ public class JwtUtil {
                     && expiration != null
                     && expiration.after(new Date());
         } catch (SecurityException e) {
+            System.out.println("JWT security error: " + e.getMessage());
             return false;
         } catch (Exception e) {
+            System.out.println("JWT validation failed: " + e.getMessage());
             return false;
         }
     }

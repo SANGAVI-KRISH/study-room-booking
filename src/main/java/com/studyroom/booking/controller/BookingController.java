@@ -230,9 +230,29 @@ public class BookingController {
         return ResponseEntity.ok(responses);
     }
 
+    @GetMapping("/status/checked-in")
+    public ResponseEntity<List<BookingResponse>> getCheckedInBookings() {
+        List<BookingResponse> responses = bookingService.getCheckedInBookings()
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
+    }
+
     @GetMapping("/status/completed")
     public ResponseEntity<List<BookingResponse>> getCompletedBookings() {
         List<BookingResponse> responses = bookingService.getCompletedBookings()
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
+    }
+
+    @GetMapping("/status/no-show")
+    public ResponseEntity<List<BookingResponse>> getNoShowBookings() {
+        List<BookingResponse> responses = bookingService.getNoShowBookings()
                 .stream()
                 .map(this::mapToBookingResponse)
                 .collect(Collectors.toList());
@@ -273,6 +293,16 @@ public class BookingController {
     @GetMapping("/user/{userId}/history/rejected")
     public ResponseEntity<List<BookingResponse>> getRejectedBookingsByUserId(@PathVariable UUID userId) {
         List<BookingResponse> responses = bookingService.getRejectedBookingsByUserId(userId)
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
+    }
+
+    @GetMapping("/user/{userId}/history/no-show")
+    public ResponseEntity<List<BookingResponse>> getNoShowBookingsByUserId(@PathVariable UUID userId) {
+        List<BookingResponse> responses = bookingService.getNoShowBookingsByUserId(userId)
                 .stream()
                 .map(this::mapToBookingResponse)
                 .collect(Collectors.toList());
@@ -497,6 +527,24 @@ public class BookingController {
         return ResponseEntity.ok(mapToBookingResponse(booking));
     }
 
+    @PostMapping("/{id}/check-in")
+    public ResponseEntity<BookingResponse> checkInBooking(
+            @PathVariable UUID id,
+            @RequestParam UUID userId
+    ) {
+        Booking booking = bookingService.checkInBooking(id, userId);
+        return ResponseEntity.ok(mapToBookingResponse(booking));
+    }
+
+    @GetMapping("/{id}/can-check-in")
+    public ResponseEntity<Boolean> canCheckInBooking(
+            @PathVariable UUID id,
+            @RequestParam UUID userId
+    ) {
+        boolean canCheckIn = bookingService.canCheckIn(id, userId);
+        return ResponseEntity.ok(canCheckIn);
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<String> deleteBooking(@PathVariable UUID id) {
         bookingService.deleteBooking(id);
@@ -607,6 +655,12 @@ public class BookingController {
             durationMinutes = Duration.between(booking.getStartAt(), booking.getEndAt()).toMinutes();
         }
         response.setDurationMinutes(durationMinutes);
+
+        // Add these only if your BookingResponse DTO already contains these fields
+        response.setCheckedInAt(booking.getCheckedInAt());
+        response.setIsPresent(booking.getIsPresent());
+        response.setAttendanceMarkedAt(booking.getAttendanceMarkedAt());
+        response.setFeedbackSubmitted(booking.getFeedbackSubmitted());
 
         return response;
     }

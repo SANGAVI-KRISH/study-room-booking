@@ -8,19 +8,38 @@ import {
 export default function AdminBookingApproval() {
   const [bookings, setBookings] = useState([]);
   const [message, setMessage] = useState("");
+  const [messageType, setMessageType] = useState("");
   const [actionLoadingId, setActionLoadingId] = useState(null);
 
   const approverId = localStorage.getItem("userId");
 
-  const loadPendingBookings = async () => {
+  const showSuccess = (text) => {
+    setMessage(text);
+    setMessageType("success");
+  };
+
+  const showError = (text) => {
+    setMessage(text);
+    setMessageType("error");
+  };
+
+  const clearMessage = () => {
+    setMessage("");
+    setMessageType("");
+  };
+
+  const loadPendingBookings = async (preserveMessage = false) => {
     try {
       const data = await getBookingsByStatus("PENDING");
       setBookings(Array.isArray(data) ? data : []);
-      setMessage("");
+
+      if (!preserveMessage) {
+        clearMessage();
+      }
     } catch (error) {
-      console.error(error);
-      setMessage(error.message || "Failed to load pending bookings");
+      console.error("Failed to load pending bookings:", error);
       setBookings([]);
+      showError("Failed to load pending bookings");
     }
   };
 
@@ -31,17 +50,19 @@ export default function AdminBookingApproval() {
   const handleApprove = async (bookingId) => {
     try {
       if (!approverId) {
-        setMessage("Logged-in approver ID not found. Please login again.");
+        showError("Logged-in approver ID not found. Please login again.");
         return;
       }
 
       setActionLoadingId(bookingId);
+      clearMessage();
+
       await approveBooking(bookingId, approverId);
-      setMessage("Booking approved successfully");
-      await loadPendingBookings();
+      await loadPendingBookings(true);
+      showSuccess("Booking approved successfully");
     } catch (error) {
-      console.error(error);
-      setMessage(error.message || "Failed to approve booking");
+      console.error("Approve booking failed:", error);
+      showError("Unable to approve booking");
     } finally {
       setActionLoadingId(null);
     }
@@ -50,12 +71,14 @@ export default function AdminBookingApproval() {
   const handleReject = async (bookingId) => {
     try {
       setActionLoadingId(bookingId);
+      clearMessage();
+
       await rejectBooking(bookingId);
-      setMessage("Booking rejected successfully");
-      await loadPendingBookings();
+      await loadPendingBookings(true);
+      showSuccess("Booking rejected successfully");
     } catch (error) {
-      console.error(error);
-      setMessage(error.message || "Failed to reject booking");
+      console.error("Reject booking failed:", error);
+      showError("Unable to reject booking");
     } finally {
       setActionLoadingId(null);
     }
@@ -63,6 +86,7 @@ export default function AdminBookingApproval() {
 
   const formatDate = (dateTime) => {
     if (!dateTime) return "-";
+
     return new Date(dateTime).toLocaleDateString("en-IN", {
       day: "2-digit",
       month: "2-digit",
@@ -72,6 +96,7 @@ export default function AdminBookingApproval() {
 
   const formatTime = (dateTime) => {
     if (!dateTime) return "-";
+
     return new Date(dateTime).toLocaleTimeString("en-IN", {
       hour: "2-digit",
       minute: "2-digit",
@@ -83,7 +108,18 @@ export default function AdminBookingApproval() {
     <div style={styles.container}>
       <h2 style={styles.heading}>Pending Booking Requests</h2>
 
-      {message && <p style={styles.message}>{message}</p>}
+      {message && (
+        <p
+          style={{
+            ...styles.message,
+            ...(messageType === "success"
+              ? styles.successMessage
+              : styles.errorMessage),
+          }}
+        >
+          {message}
+        </p>
+      )}
 
       {bookings.length === 0 ? (
         <p style={styles.emptyText}>No pending bookings</p>
@@ -105,49 +141,47 @@ export default function AdminBookingApproval() {
             </thead>
 
             <tbody>
-              {bookings.map((booking) => (
-                <tr key={booking.bookingId}>
-                  <td style={styles.td}>{booking.bookingId}</td>
-                  <td style={styles.td}>{booking.roomName || "-"}</td>
-                  <td style={styles.td}>{booking.userName || "-"}</td>
-                  <td style={styles.td}>{formatDate(booking.startAt)}</td>
-                  <td style={styles.td}>{formatTime(booking.startAt)}</td>
-                  <td style={styles.td}>{formatTime(booking.endAt)}</td>
-                  <td style={styles.td}>{booking.purpose || "-"}</td>
-                  <td style={styles.td}>{booking.status || "-"}</td>
-                  <td style={styles.td}>
-                    <button
-                      style={{
-                        ...styles.approveButton,
-                        opacity: actionLoadingId === booking.bookingId ? 0.7 : 1,
-                        cursor:
-                          actionLoadingId === booking.bookingId
-                            ? "not-allowed"
-                            : "pointer",
-                      }}
-                      onClick={() => handleApprove(booking.bookingId)}
-                      disabled={actionLoadingId === booking.bookingId}
-                    >
-                      {actionLoadingId === booking.bookingId ? "Processing..." : "Approve"}
-                    </button>
+              {bookings.map((booking) => {
+                const isLoading = actionLoadingId === booking.bookingId;
 
-                    <button
-                      style={{
-                        ...styles.rejectButton,
-                        opacity: actionLoadingId === booking.bookingId ? 0.7 : 1,
-                        cursor:
-                          actionLoadingId === booking.bookingId
-                            ? "not-allowed"
-                            : "pointer",
-                      }}
-                      onClick={() => handleReject(booking.bookingId)}
-                      disabled={actionLoadingId === booking.bookingId}
-                    >
-                      Reject
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                return (
+                  <tr key={booking.bookingId}>
+                    <td style={styles.td}>{booking.bookingId}</td>
+                    <td style={styles.td}>{booking.roomName || "-"}</td>
+                    <td style={styles.td}>{booking.userName || "-"}</td>
+                    <td style={styles.td}>{formatDate(booking.startAt)}</td>
+                    <td style={styles.td}>{formatTime(booking.startAt)}</td>
+                    <td style={styles.td}>{formatTime(booking.endAt)}</td>
+                    <td style={styles.td}>{booking.purpose || "-"}</td>
+                    <td style={styles.td}>{booking.status || "-"}</td>
+                    <td style={styles.td}>
+                      <div style={styles.actionGroup}>
+                        <button
+                          style={{
+                            ...styles.approveButton,
+                            ...(isLoading ? styles.disabledButton : {}),
+                          }}
+                          onClick={() => handleApprove(booking.bookingId)}
+                          disabled={isLoading}
+                        >
+                          {isLoading ? "Processing..." : "Approve"}
+                        </button>
+
+                        <button
+                          style={{
+                            ...styles.rejectButton,
+                            ...(isLoading ? styles.disabledButton : {}),
+                          }}
+                          onClick={() => handleReject(booking.bookingId)}
+                          disabled={isLoading}
+                        >
+                          {isLoading ? "Processing..." : "Reject"}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -169,8 +203,20 @@ const styles = {
   },
   message: {
     marginBottom: "15px",
-    color: "#333",
-    fontWeight: "500",
+    fontWeight: "600",
+    padding: "10px 12px",
+    borderRadius: "8px",
+    border: "1px solid transparent",
+  },
+  successMessage: {
+    color: "#155724",
+    backgroundColor: "#d4edda",
+    borderColor: "#c3e6cb",
+  },
+  errorMessage: {
+    color: "#721c24",
+    backgroundColor: "#f8d7da",
+    borderColor: "#f5c6cb",
   },
   emptyText: {
     color: "#666",
@@ -197,13 +243,18 @@ const styles = {
     padding: "12px",
     verticalAlign: "top",
   },
+  actionGroup: {
+    display: "flex",
+    gap: "8px",
+    flexWrap: "wrap",
+  },
   approveButton: {
     padding: "8px 12px",
     backgroundColor: "#28a745",
     color: "#fff",
     border: "none",
     borderRadius: "6px",
-    marginRight: "8px",
+    cursor: "pointer",
   },
   rejectButton: {
     padding: "8px 12px",
@@ -211,5 +262,10 @@ const styles = {
     color: "#fff",
     border: "none",
     borderRadius: "6px",
+    cursor: "pointer",
+  },
+  disabledButton: {
+    opacity: 0.7,
+    cursor: "not-allowed",
   },
 };

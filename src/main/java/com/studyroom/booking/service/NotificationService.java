@@ -5,10 +5,13 @@ import com.studyroom.booking.model.Notification;
 import com.studyroom.booking.model.NotificationType;
 import com.studyroom.booking.model.User;
 import com.studyroom.booking.repository.NotificationRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.UUID;
@@ -17,17 +20,21 @@ import java.util.UUID;
 @Transactional
 public class NotificationService {
 
+    private static final Logger log = LoggerFactory.getLogger(NotificationService.class);
+
     private final NotificationRepository notificationRepository;
     private final EmailService emailService;
 
+    private static final ZoneId APP_ZONE = ZoneId.of("Asia/Kolkata");
+
     private static final DateTimeFormatter DATE_FORMATTER =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd");
+            DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     private static final DateTimeFormatter TIME_FORMATTER =
-            DateTimeFormatter.ofPattern("HH:mm");
+            DateTimeFormatter.ofPattern("hh:mm a");
 
     private static final DateTimeFormatter DATE_TIME_FORMATTER =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+            DateTimeFormatter.ofPattern("dd/MM/yyyy, hh:mm a");
 
     public NotificationService(NotificationRepository notificationRepository,
                                EmailService emailService) {
@@ -58,7 +65,7 @@ public class NotificationService {
         notification.setMessage(message);
         notification.setRead(false);
         notification.setBookingId(bookingId);
-        notification.setCreatedAt(OffsetDateTime.now());
+        notification.setCreatedAt(OffsetDateTime.now(APP_ZONE));
 
         return notificationRepository.save(notification);
     }
@@ -83,10 +90,11 @@ public class NotificationService {
 
         try {
             if (user.getEmail() != null && !user.getEmail().isBlank()) {
-                emailService.sendEmail(user.getEmail(), title, message);
+                String emailBody = buildEmailBody(user, title, message);
+                emailService.sendEmail(user.getEmail(), title, emailBody);
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Failed to send email to user {}: {}", user.getEmail(), e.getMessage(), e);
         }
     }
 
@@ -161,6 +169,27 @@ public class NotificationService {
         notificationRepository.delete(notification);
     }
 
+    private String formatDate(OffsetDateTime dateTime) {
+        if (dateTime == null) {
+            return "N/A";
+        }
+        return dateTime.atZoneSameInstant(APP_ZONE).format(DATE_FORMATTER);
+    }
+
+    private String formatTime(OffsetDateTime dateTime) {
+        if (dateTime == null) {
+            return "N/A";
+        }
+        return dateTime.atZoneSameInstant(APP_ZONE).format(TIME_FORMATTER);
+    }
+
+    private String formatDateTime(OffsetDateTime dateTime) {
+        if (dateTime == null) {
+            return "N/A";
+        }
+        return dateTime.atZoneSameInstant(APP_ZONE).format(DATE_TIME_FORMATTER);
+    }
+
     private String getRoomDisplayName(Booking booking) {
         if (booking == null || booking.getRoom() == null) {
             return "N/A";
@@ -183,6 +212,13 @@ public class NotificationService {
         return roomNumber;
     }
 
+    private String getUserDisplayName(User user) {
+        if (user == null || user.getName() == null || user.getName().isBlank()) {
+            return "User";
+        }
+        return user.getName();
+    }
+
     public String buildBookingMessage(String prefix, Booking booking) {
         String roomName = "N/A";
         String bookingDate = "N/A";
@@ -190,27 +226,32 @@ public class NotificationService {
         String startAtText = "N/A";
         String endAtText = "N/A";
         String attendeeText = "N/A";
+        String purposeText = "N/A";
 
         if (booking != null) {
             roomName = getRoomDisplayName(booking);
 
             if (booking.getStartAt() != null) {
-                bookingDate = booking.getStartAt().format(DATE_FORMATTER);
-                startAtText = booking.getStartAt().format(DATE_TIME_FORMATTER);
+                bookingDate = formatDate(booking.getStartAt());
+                startAtText = formatDateTime(booking.getStartAt());
             }
 
             if (booking.getEndAt() != null) {
-                endAtText = booking.getEndAt().format(DATE_TIME_FORMATTER);
+                endAtText = formatDateTime(booking.getEndAt());
             }
 
             if (booking.getStartAt() != null && booking.getEndAt() != null) {
-                timeRange = booking.getStartAt().format(TIME_FORMATTER)
+                timeRange = formatTime(booking.getStartAt())
                         + " - "
-                        + booking.getEndAt().format(TIME_FORMATTER);
+                        + formatTime(booking.getEndAt());
             }
 
             if (booking.getAttendeeCount() != null) {
                 attendeeText = String.valueOf(booking.getAttendeeCount());
+            }
+
+            if (booking.getPurpose() != null && !booking.getPurpose().isBlank()) {
+                purposeText = booking.getPurpose();
             }
         }
 
@@ -220,7 +261,16 @@ public class NotificationService {
                 + "\nTime: " + timeRange
                 + "\nStart: " + startAtText
                 + "\nEnd: " + endAtText
-                + "\nAttendees: " + attendeeText;
+                + "\nAttendees: " + attendeeText
+                + "\nPurpose: " + purposeText;
+    }
+
+    private String buildEmailBody(User user, String title, String message) {
+        return "Dear " + getUserDisplayName(user) + ",\n\n"
+                + title + "\n\n"
+                + message + "\n\n"
+                + "Regards,\n"
+                + "Smart Study Room Booking System";
     }
 
     public void sendBookingConfirmedNotification(Booking booking) {
@@ -360,7 +410,8 @@ public class NotificationService {
         }
 
         String bookedBy = "Unknown User";
-        if (booking.getUser() != null && booking.getUser().getName() != null
+        if (booking.getUser() != null
+                && booking.getUser().getName() != null
                 && !booking.getUser().getName().isBlank()) {
             bookedBy = booking.getUser().getName();
         }
@@ -390,7 +441,6 @@ public class NotificationService {
         }
 
         String title = "Booking Cancelled - Room Removed";
-
         String message = buildBookingMessage(
                 "Your booking was cancelled because the room was removed by admin.",
                 booking

@@ -88,7 +88,7 @@
             <version>5.1.0</version>
         </dependency>
 
-        <!-- PDFBox (optional, keep only if you use it elsewhere) -->
+        <!-- PDFBox -->
         <dependency>
             <groupId>org.apache.pdfbox</groupId>
             <artifactId>pdfbox</artifactId>

@@ -32,8 +32,11 @@ public class BookingService {
 
     private static final ZoneId APP_ZONE = ZoneId.of("Asia/Kolkata");
 
+    private static final int CHECKIN_EARLY_MINUTES = 15;
+    private static final int CHECKIN_LATE_MINUTES = 30;
+
     private static final List<BookingStatus> ACTIVE_STATUSES =
-            List.of(BookingStatus.PENDING, BookingStatus.APPROVED);
+            List.of(BookingStatus.PENDING, BookingStatus.APPROVED, BookingStatus.CHECKED_IN);
 
     public BookingService(
             BookingRepository bookingRepository,
@@ -198,8 +201,18 @@ public class BookingService {
     }
 
     @Transactional(readOnly = true)
+    public List<Booking> getCheckedInBookings() {
+        return getBookingsByStatus(BookingStatus.CHECKED_IN);
+    }
+
+    @Transactional(readOnly = true)
     public List<Booking> getCompletedBookings() {
         return getBookingsByStatus(BookingStatus.COMPLETED);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Booking> getNoShowBookings() {
+        return getBookingsByStatus(BookingStatus.NO_SHOW);
     }
 
     // =========================
@@ -227,6 +240,11 @@ public class BookingService {
     @Transactional(readOnly = true)
     public List<Booking> getRejectedBookingsByUserId(UUID userId) {
         return getBookingsByUserIdAndStatus(userId, BookingStatus.REJECTED);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Booking> getNoShowBookingsByUserId(UUID userId) {
+        return getBookingsByUserIdAndStatus(userId, BookingStatus.NO_SHOW);
     }
 
     @Transactional(readOnly = true)
@@ -342,6 +360,10 @@ public class BookingService {
         booking.setAttendeeCount(attendeeCount);
         booking.setReminderSent(false);
         booking.setCheckinStatus("not_checked_in");
+        booking.setCheckedInAt(null);
+        booking.setIsPresent(false);
+        booking.setAttendanceMarkedAt(null);
+        booking.setFeedbackSubmitted(false);
         booking.setCancellationReason(null);
         booking.setQrToken(null);
         booking.setApprovedBy(null);
@@ -425,6 +447,10 @@ public class BookingService {
         booking.setAttendeeCount(attendeeCount);
         booking.setReminderSent(false);
         booking.setCheckinStatus("not_checked_in");
+        booking.setCheckedInAt(null);
+        booking.setIsPresent(false);
+        booking.setAttendanceMarkedAt(null);
+        booking.setFeedbackSubmitted(false);
         booking.setCancellationReason(null);
         booking.setQrToken(null);
         booking.setApprovedBy(null);
@@ -450,6 +476,81 @@ public class BookingService {
     }
 
     // =========================
+    // CHECK-IN
+    // =========================
+
+    public Booking checkInBooking(UUID bookingId, UUID userId) {
+        if (bookingId == null) {
+            throw new RuntimeException("Booking ID is required");
+        }
+
+        if (userId == null) {
+            throw new RuntimeException("User ID is required");
+        }
+
+        Booking booking = bookingRepository.findByIdAndUser_Id(bookingId, userId)
+                .orElseThrow(() -> new RuntimeException("Booking not found for this user"));
+
+        if (!BookingStatus.APPROVED.equals(booking.getStatus())) {
+            throw new RuntimeException("Only approved bookings can be checked in");
+        }
+
+        if ("checked_in".equalsIgnoreCase(booking.getCheckinStatus())
+                || BookingStatus.CHECKED_IN.equals(booking.getStatus())
+                || booking.getCheckedInAt() != null) {
+            throw new RuntimeException("Booking already checked in");
+        }
+
+        OffsetDateTime now = OffsetDateTime.now(APP_ZONE);
+
+        if (!isWithinCheckInWindow(booking, now)) {
+            OffsetDateTime allowedFrom = booking.getStartAt().minusMinutes(CHECKIN_EARLY_MINUTES);
+            OffsetDateTime allowedUntil = booking.getStartAt().plusMinutes(CHECKIN_LATE_MINUTES);
+            throw new RuntimeException(
+                    "Check-in allowed only from " + allowedFrom + " to " + allowedUntil
+            );
+        }
+
+        booking.setCheckinStatus("checked_in");
+        booking.setCheckedInAt(now);
+        booking.setIsPresent(true);
+        booking.setAttendanceMarkedAt(now);
+        booking.setStatus(BookingStatus.CHECKED_IN);
+
+        return bookingRepository.save(booking);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean canCheckIn(UUID bookingId, UUID userId) {
+        if (bookingId == null || userId == null) {
+            return false;
+        }
+
+        return bookingRepository.findByIdAndUser_Id(bookingId, userId)
+                .map(booking -> BookingStatus.APPROVED.equals(booking.getStatus())
+                        && !"checked_in".equalsIgnoreCase(booking.getCheckinStatus())
+                        && booking.getCheckedInAt() == null
+                        && isWithinCheckInWindow(booking, OffsetDateTime.now(APP_ZONE)))
+                .orElse(false);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isWithinCheckInWindow(Booking booking) {
+        return isWithinCheckInWindow(booking, OffsetDateTime.now(APP_ZONE));
+    }
+
+    private boolean isWithinCheckInWindow(Booking booking, OffsetDateTime now) {
+        if (booking == null || booking.getStartAt() == null || now == null) {
+            return false;
+        }
+
+        OffsetDateTime allowedFrom = booking.getStartAt().minusMinutes(CHECKIN_EARLY_MINUTES);
+        OffsetDateTime allowedUntil = booking.getStartAt().plusMinutes(CHECKIN_LATE_MINUTES);
+
+        return !now.isBefore(allowedFrom) && !now.isAfter(allowedUntil);
+    }
+
+    // =========================
     // APPROVE / REJECT / CANCEL / COMPLETE
     // =========================
 
@@ -463,34 +564,10 @@ public class BookingService {
         if (BookingStatus.CANCELLED.equals(booking.getStatus())
                 || BookingStatus.REJECTED.equals(booking.getStatus())
                 || BookingStatus.COMPLETED.equals(booking.getStatus())
+                || BookingStatus.NO_SHOW.equals(booking.getStatus())
                 || BookingStatus.AUTO_CANCELLED.equals(booking.getStatus())) {
             throw new RuntimeException("This booking cannot be approved");
         }
-
-        if (booking.getRoom() == null || booking.getStartAt() == null || booking.getEndAt() == null) {
-            throw new RuntimeException("Booking room or time range is missing");
-        }
-
-        validateRoomNotUnderMaintenance(
-                booking.getRoom().getId(),
-                booking.getStartAt(),
-                booking.getEndAt()
-        );
-
-        timeSlotService.validateBookingSlot(
-                booking.getRoom().getId(),
-                booking.getStartAt(),
-                booking.getEndAt()
-        );
-
-        validateRoomBookingAvailability(
-                booking.getRoom(),
-                booking.getStartAt(),
-                booking.getEndAt(),
-                booking.getUser() != null ? booking.getUser().getId() : null,
-                booking.getAttendeeCount(),
-                booking.getId()
-        );
 
         booking.setStatus(BookingStatus.APPROVED);
         booking.setApprovedBy(approver);
@@ -509,6 +586,8 @@ public class BookingService {
 
         if (BookingStatus.CANCELLED.equals(booking.getStatus())
                 || BookingStatus.COMPLETED.equals(booking.getStatus())
+                || BookingStatus.CHECKED_IN.equals(booking.getStatus())
+                || BookingStatus.NO_SHOW.equals(booking.getStatus())
                 || BookingStatus.AUTO_CANCELLED.equals(booking.getStatus())) {
             throw new RuntimeException("This booking cannot be rejected");
         }
@@ -525,8 +604,9 @@ public class BookingService {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new RuntimeException("Booking not found"));
 
-        if (BookingStatus.COMPLETED.equals(booking.getStatus())) {
-            throw new RuntimeException("Completed booking cannot be cancelled");
+        if (BookingStatus.COMPLETED.equals(booking.getStatus())
+                || BookingStatus.NO_SHOW.equals(booking.getStatus())) {
+            throw new RuntimeException("This booking cannot be cancelled");
         }
 
         booking.setStatus(BookingStatus.CANCELLED);
@@ -565,6 +645,25 @@ public class BookingService {
             booking.setReminderSent(false);
         }
 
+        if (BookingStatus.CHECKED_IN.equals(status)) {
+            OffsetDateTime now = OffsetDateTime.now(APP_ZONE);
+            booking.setCheckinStatus("checked_in");
+            if (booking.getCheckedInAt() == null) {
+                booking.setCheckedInAt(now);
+            }
+            booking.setIsPresent(true);
+            if (booking.getAttendanceMarkedAt() == null) {
+                booking.setAttendanceMarkedAt(now);
+            }
+        }
+
+        if (BookingStatus.NO_SHOW.equals(status)) {
+            booking.setCheckinStatus("not_checked_in");
+            if (booking.getIsPresent() == null) {
+                booking.setIsPresent(false);
+            }
+        }
+
         if (BookingStatus.CANCELLED.equals(status)
                 && (booking.getCancellationReason() == null || booking.getCancellationReason().isBlank())) {
             booking.setCancellationReason("Status updated to cancelled");
@@ -581,6 +680,44 @@ public class BookingService {
         }
 
         return saved;
+    }
+
+    // =========================
+    // AUTO STATUS UPDATE METHODS
+    // =========================
+
+    public int markCompletedBookings() {
+        OffsetDateTime now = OffsetDateTime.now(APP_ZONE);
+
+        List<Booking> bookings = bookingRepository.findBookingsToMarkCompleted(BookingStatus.CHECKED_IN, now);
+
+        for (Booking booking : bookings) {
+            booking.setStatus(BookingStatus.COMPLETED);
+        }
+
+        if (!bookings.isEmpty()) {
+            bookingRepository.saveAll(bookings);
+        }
+
+        return bookings.size();
+    }
+
+    public int markNoShowBookings() {
+        OffsetDateTime now = OffsetDateTime.now(APP_ZONE);
+
+        List<Booking> bookings = bookingRepository.findBookingsToMarkNoShow(BookingStatus.APPROVED, now);
+
+        for (Booking booking : bookings) {
+            booking.setStatus(BookingStatus.NO_SHOW);
+            booking.setCheckinStatus("not_checked_in");
+            booking.setIsPresent(false);
+        }
+
+        if (!bookings.isEmpty()) {
+            bookingRepository.saveAll(bookings);
+        }
+
+        return bookings.size();
     }
 
     // =========================
@@ -601,6 +738,8 @@ public class BookingService {
 
         if (BookingStatus.CANCELLED.equals(booking.getStatus())
                 || BookingStatus.COMPLETED.equals(booking.getStatus())
+                || BookingStatus.CHECKED_IN.equals(booking.getStatus())
+                || BookingStatus.NO_SHOW.equals(booking.getStatus())
                 || BookingStatus.AUTO_CANCELLED.equals(booking.getStatus())) {
             throw new RuntimeException("This booking cannot be rescheduled");
         }
@@ -626,11 +765,17 @@ public class BookingService {
         booking.setStartAt(startAt);
         booking.setEndAt(endAt);
         booking.setReminderSent(false);
+        booking.setCheckinStatus("not_checked_in");
+        booking.setCheckedInAt(null);
+        booking.setIsPresent(false);
+        booking.setAttendanceMarkedAt(null);
 
         if (Boolean.TRUE.equals(booking.getRoom().getApprovalRequired())) {
             booking.setStatus(BookingStatus.PENDING);
             booking.setApprovedBy(null);
             booking.setApprovalTime(null);
+        } else {
+            booking.setStatus(BookingStatus.APPROVED);
         }
 
         Booking saved = bookingRepository.save(booking);
@@ -746,6 +891,7 @@ public class BookingService {
         if (BookingStatus.COMPLETED.equals(booking.getStatus())
                 || BookingStatus.CANCELLED.equals(booking.getStatus())
                 || BookingStatus.REJECTED.equals(booking.getStatus())
+                || BookingStatus.NO_SHOW.equals(booking.getStatus())
                 || BookingStatus.AUTO_CANCELLED.equals(booking.getStatus())) {
             return true;
         }

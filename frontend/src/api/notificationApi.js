@@ -1,7 +1,17 @@
 const API_BASE = "http://localhost:8080/api/notifications";
 
+/* ---------------- AUTH HELPERS ---------------- */
+
+function sanitizeToken(token) {
+  if (!token || token === "null" || token === "undefined") {
+    return "";
+  }
+
+  return String(token).replace(/^Bearer\s+/i, "").trim();
+}
+
 function getToken() {
-  const token = localStorage.getItem("token");
+  const token = sanitizeToken(localStorage.getItem("token"));
 
   if (!token) {
     throw new Error("User not authenticated");
@@ -24,50 +34,65 @@ function getAuthHeaders(isJson = true) {
   return headers;
 }
 
-async function handleResponse(response, defaultMessage) {
-  if (response.ok) {
-    const contentType = response.headers.get("content-type");
+/* ---------------- VALIDATION HELPERS ---------------- */
 
-    if (contentType && contentType.includes("application/json")) {
-      return response.json();
-    }
+function isValidUuid(value) {
+  return (
+    typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value.trim()
+    )
+  );
+}
 
-    return response.text();
+function validateUuid(value, fieldName) {
+  if (!value || typeof value !== "string" || !value.trim()) {
+    throw new Error(`${fieldName} is required`);
   }
 
-  let errorMessage = defaultMessage;
+  if (!isValidUuid(value.trim())) {
+    throw new Error(`${fieldName} must be a valid UUID`);
+  }
+}
+
+/* ---------------- RESPONSE HELPER ---------------- */
+
+async function handleResponse(response, defaultMessage) {
+  const contentType = response.headers.get("content-type") || "";
+  let data = null;
 
   try {
-    const contentType = response.headers.get("content-type");
-
-    if (contentType && contentType.includes("application/json")) {
-      const errorData = await response.json();
-      errorMessage =
-        errorData?.message ||
-        errorData?.error ||
-        errorData?.details ||
-        JSON.stringify(errorData) ||
-        defaultMessage;
+    if (contentType.includes("application/json")) {
+      data = await response.json();
     } else {
-      const errorText = await response.text();
-      if (errorText) {
-        errorMessage = errorText;
-      }
+      const text = await response.text();
+      data = text ? { message: text } : null;
     }
   } catch {
-    errorMessage = defaultMessage;
+    data = null;
   }
 
-  if (response.status === 401) {
-    errorMessage = "Unauthorized";
-  } else if (response.status === 403) {
-    errorMessage = "Forbidden";
-  } else if (response.status === 500 && errorMessage === defaultMessage) {
-    errorMessage = "Internal server error";
+  if (!response.ok) {
+    let errorMessage =
+      data?.message || data?.error || data?.details || defaultMessage;
+
+    if (response.status === 401) {
+      errorMessage = "Unauthorized";
+    } else if (response.status === 403) {
+      errorMessage = "Forbidden";
+    } else if (response.status === 404) {
+      errorMessage = "Not found";
+    } else if (response.status === 500 && errorMessage === defaultMessage) {
+      errorMessage = "Internal server error";
+    }
+
+    throw new Error(errorMessage);
   }
 
-  throw new Error(errorMessage);
+  return data;
 }
+
+/* ---------------- NOTIFICATION APIs ---------------- */
 
 export async function getMyNotifications() {
   const response = await fetch(`${API_BASE}/my`, {
@@ -97,7 +122,9 @@ export async function getUnreadCount() {
 }
 
 export async function markNotificationRead(id) {
-  const response = await fetch(`${API_BASE}/${id}/read`, {
+  validateUuid(id, "Notification ID");
+
+  const response = await fetch(`${API_BASE}/${id.trim()}/read`, {
     method: "PUT",
     headers: getAuthHeaders(false),
   });
@@ -106,7 +133,9 @@ export async function markNotificationRead(id) {
 }
 
 export async function markNotificationUnread(id) {
-  const response = await fetch(`${API_BASE}/${id}/unread`, {
+  validateUuid(id, "Notification ID");
+
+  const response = await fetch(`${API_BASE}/${id.trim()}/unread`, {
     method: "PUT",
     headers: getAuthHeaders(false),
   });
@@ -124,7 +153,9 @@ export async function markAllNotificationsRead() {
 }
 
 export async function deleteNotification(id) {
-  const response = await fetch(`${API_BASE}/${id}`, {
+  validateUuid(id, "Notification ID");
+
+  const response = await fetch(`${API_BASE}/${id.trim()}`, {
     method: "DELETE",
     headers: getAuthHeaders(false),
   });

@@ -6,14 +6,22 @@ const TIME_SLOT_BASE_URL = "http://localhost:8080/api/time-slots";
 
 /* ---------------- AUTH HELPERS ---------------- */
 
-function getToken() {
-  const token = localStorage.getItem("token");
-
+function sanitizeToken(token) {
   if (!token || token === "null" || token === "undefined") {
+    return "";
+  }
+
+  return String(token).replace(/^Bearer\s+/i, "").trim();
+}
+
+function getToken() {
+  const token = sanitizeToken(localStorage.getItem("token"));
+
+  if (!token) {
     throw new Error("User not authenticated");
   }
 
-  return token.trim();
+  return token;
 }
 
 function getAuthHeaders(isJson = true) {
@@ -31,11 +39,11 @@ function getAuthHeaders(isJson = true) {
 }
 
 function getOptionalAuthHeaders(isJson = true) {
-  const token = localStorage.getItem("token");
+  const token = sanitizeToken(localStorage.getItem("token"));
   const headers = {};
 
-  if (token && token !== "null" && token !== "undefined" && token.trim()) {
-    headers.Authorization = `Bearer ${token.trim()}`;
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
   }
 
   if (isJson) {
@@ -132,9 +140,9 @@ function buildQueryParams(filters = {}) {
 
 async function handleResponse(response, defaultMessage) {
   if (response.ok) {
-    const contentType = response.headers.get("content-type");
+    const contentType = response.headers.get("content-type") || "";
 
-    if (contentType && contentType.includes("application/json")) {
+    if (contentType.includes("application/json")) {
       return response.json();
     }
 
@@ -144,31 +152,33 @@ async function handleResponse(response, defaultMessage) {
   let errorMessage = defaultMessage;
 
   try {
-    const contentType = response.headers.get("content-type");
+    const contentType = response.headers.get("content-type") || "";
 
-    if (contentType && contentType.includes("application/json")) {
+    if (contentType.includes("application/json")) {
       const errorData = await response.json();
       errorMessage =
         errorData?.message ||
         errorData?.error ||
         errorData?.details ||
-        JSON.stringify(errorData) ||
         defaultMessage;
     } else {
       const errorText = await response.text();
-      if (errorText) {
-        errorMessage = errorText;
+      if (errorText && errorText.trim()) {
+        errorMessage = errorText.trim();
       }
     }
   } catch {
     errorMessage = defaultMessage;
   }
 
-  if (
-    response.status === 401 &&
-    !String(errorMessage).toLowerCase().includes("unauthorized")
-  ) {
+  if (response.status === 401) {
     errorMessage = "Unauthorized";
+  } else if (response.status === 403) {
+    errorMessage = "Forbidden";
+  } else if (response.status === 404) {
+    errorMessage = "Not found";
+  } else if (response.status === 500 && errorMessage === defaultMessage) {
+    errorMessage = "Internal server error";
   }
 
   throw new Error(errorMessage);
@@ -767,15 +777,10 @@ function normalizeReschedulePayload(rescheduleData) {
 
 export async function bookRoom(bookingData) {
   const payload = normalizeBookingPayload(bookingData);
-  const headers = getAuthHeaders(true);
-
-  console.log("BOOKING_BASE_URL:", BOOKING_BASE_URL);
-  console.log("Booking headers:", headers);
-  console.log("Booking payload:", payload);
 
   const response = await fetch(BOOKING_BASE_URL, {
     method: "POST",
-    headers,
+    headers: getAuthHeaders(true),
     body: JSON.stringify(payload),
   });
 
@@ -1092,4 +1097,23 @@ export async function getPeakBookingHoursReport() {
   });
 
   return handleResponse(response, "Failed to fetch peak booking hours report");
+}
+
+/* ---------------- CHECK-IN API ---------------- */
+
+export async function checkInBooking(bookingId, userId) {
+  validateUuid(bookingId, "Booking ID");
+  validateUuid(userId, "User ID");
+
+  const response = await fetch(
+    `${BOOKING_BASE_URL}/${bookingId}/check-in?userId=${encodeURIComponent(
+      userId.trim()
+    )}`,
+    {
+      method: "POST",
+      headers: getAuthHeaders(false),
+    }
+  );
+
+  return handleResponse(response, "Failed to check in");
 }

@@ -42,13 +42,11 @@ public class User {
     @Column(name = "updated_at", insertable = false, updatable = false)
     private OffsetDateTime updatedAt;
 
-    // ================= CONSTRUCTORS =================
-
     public User() {}
 
     public User(String name, String email, String password, Role role, String department, String phone) {
         this.name = normalize(name);
-        this.email = normalize(email);
+        this.email = normalizeEmail(email);
         this.password = password;
         this.role = role;
         this.department = normalize(department);
@@ -56,10 +54,12 @@ public class User {
         this.isActive = true;
     }
 
-    // ================= HELPER METHODS =================
-
     private String normalize(String value) {
         return value == null ? null : value.trim();
+    }
+
+    private String normalizeEmail(String value) {
+        return value == null ? null : value.trim().toLowerCase();
     }
 
     public boolean isAdmin() {
@@ -77,8 +77,6 @@ public class User {
     public boolean isActiveUser() {
         return Boolean.TRUE.equals(this.isActive);
     }
-
-    // ================= GETTERS & SETTERS =================
 
     public UUID getId() {
         return id;
@@ -101,14 +99,13 @@ public class User {
     }
 
     public void setEmail(String email) {
-        this.email = normalize(email);
+        this.email = normalizeEmail(email);
     }
 
     public String getPassword() {
         return password;
     }
 
-    // IMPORTANT: always store encoded password
     public void setPassword(String password) {
         this.password = password;
     }
@@ -152,8 +149,6 @@ public class User {
     public OffsetDateTime getUpdatedAt() {
         return updatedAt;
     }
-
-    // ================= DEBUG =================
 
     @Override
     public String toString() {

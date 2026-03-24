@@ -4,7 +4,10 @@ import {
   getPastBookings,
   getBookingById,
   downloadBookingHistoryPdf,
+  checkInBooking,
 } from "../api/roomApi";
+import FeedbackForm from "../components/FeedbackForm";
+import { hasBookingFeedback } from "../api/feedbackApi";
 import { useNavigate } from "react-router-dom";
 
 export default function BookingHistory() {
@@ -12,11 +15,17 @@ export default function BookingHistory() {
 
   const [bookings, setBookings] = useState([]);
   const [selectedBooking, setSelectedBooking] = useState(null);
+  const [selectedBookingForFeedback, setSelectedBookingForFeedback] =
+    useState(null);
+  const [feedbackStatusMap, setFeedbackStatusMap] = useState({});
   const [filterType, setFilterType] = useState("ALL");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
+  const [actionMessageType, setActionMessageType] = useState("success");
+  const [checkInLoadingMap, setCheckInLoadingMap] = useState({});
 
   const userId = localStorage.getItem("userId");
   const token = localStorage.getItem("token");
@@ -32,6 +41,38 @@ export default function BookingHistory() {
     loadAllBookings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, token]);
+
+  useEffect(() => {
+    async function loadFeedbackStatus() {
+      if (!Array.isArray(bookings) || bookings.length === 0) {
+        setFeedbackStatusMap({});
+        return;
+      }
+
+      const result = {};
+
+      for (const booking of bookings) {
+        const bookingKey = booking.bookingId || booking.id;
+        if (!bookingKey) continue;
+
+        if (booking.feedbackSubmitted === true) {
+          result[bookingKey] = true;
+          continue;
+        }
+
+        try {
+          const data = await hasBookingFeedback(bookingKey);
+          result[bookingKey] = data?.exists === true;
+        } catch {
+          result[bookingKey] = false;
+        }
+      }
+
+      setFeedbackStatusMap(result);
+    }
+
+    loadFeedbackStatus();
+  }, [bookings]);
 
   const handleAuthError = (error, fallbackMessage) => {
     console.error(fallbackMessage, error);
@@ -50,6 +91,7 @@ export default function BookingHistory() {
       localStorage.removeItem("name");
       setBookings([]);
       setSelectedBooking(null);
+      setSelectedBookingForFeedback(null);
       navigate("/login");
       return;
     }
@@ -57,10 +99,23 @@ export default function BookingHistory() {
     setPageError(message);
   };
 
+  const showActionMessage = (message, type = "success") => {
+    setActionMessage(message);
+    setActionMessageType(type);
+
+    window.clearTimeout(showActionMessage._timer);
+    showActionMessage._timer = window.setTimeout(() => {
+      setActionMessage("");
+    }, 3000);
+  };
+
+  const normalizeStatus = (status) => String(status || "").trim().toUpperCase();
+
   const loadAllBookings = async () => {
     try {
       setLoading(true);
       setPageError("");
+      setActionMessage("");
 
       const data = await getBookingHistory(userId);
       setBookings(Array.isArray(data) ? data : []);
@@ -76,6 +131,7 @@ export default function BookingHistory() {
     try {
       setLoading(true);
       setPageError("");
+      setActionMessage("");
 
       const data = await getPastBookings(userId);
       setBookings(Array.isArray(data) ? data : []);
@@ -91,10 +147,11 @@ export default function BookingHistory() {
     try {
       setLoading(true);
       setPageError("");
+      setActionMessage("");
 
       const data = await getBookingHistory(userId);
       const filtered = (Array.isArray(data) ? data : []).filter(
-        (booking) => booking.status === "COMPLETED"
+        (booking) => normalizeStatus(booking.status) === "COMPLETED"
       );
 
       setBookings(filtered);
@@ -110,13 +167,13 @@ export default function BookingHistory() {
     try {
       setLoading(true);
       setPageError("");
+      setActionMessage("");
 
       const data = await getBookingHistory(userId);
-      const filtered = (Array.isArray(data) ? data : []).filter(
-        (booking) =>
-          booking.status === "CANCELLED" ||
-          booking.status === "AUTO_CANCELLED"
-      );
+      const filtered = (Array.isArray(data) ? data : []).filter((booking) => {
+        const status = normalizeStatus(booking.status);
+        return status === "CANCELLED" || status === "AUTO_CANCELLED";
+      });
 
       setBookings(filtered);
       setSelectedBooking(null);
@@ -153,6 +210,7 @@ export default function BookingHistory() {
     try {
       setLoading(true);
       setPageError("");
+      setActionMessage("");
 
       const data = await getBookingHistory(userId);
 
@@ -180,6 +238,7 @@ export default function BookingHistory() {
     setStartDate("");
     setEndDate("");
     setPageError("");
+    setActionMessage("");
     await loadAllBookings();
   };
 
@@ -202,6 +261,7 @@ export default function BookingHistory() {
       }
 
       setPageError("");
+      setActionMessage("");
 
       const blob = await downloadBookingHistoryPdf(userId);
       const url = window.URL.createObjectURL(blob);
@@ -216,6 +276,43 @@ export default function BookingHistory() {
       window.URL.revokeObjectURL(url);
     } catch (error) {
       handleAuthError(error, "Failed to download booking history PDF");
+    }
+  };
+
+  const handleCheckIn = async (booking) => {
+    const bookingId = booking?.bookingId || booking?.id;
+
+    if (!bookingId) {
+      setPageError("Booking ID not found.");
+      return;
+    }
+
+    try {
+      setPageError("");
+      setActionMessage("");
+      setCheckInLoadingMap((prev) => ({ ...prev, [bookingId]: true }));
+
+      const updatedBooking = await checkInBooking(bookingId, userId);
+
+      setBookings((prev) =>
+        prev.map((item) => {
+          const itemId = item.bookingId || item.id;
+          return itemId === bookingId ? { ...item, ...updatedBooking } : item;
+        })
+      );
+
+      if (
+        selectedBooking &&
+        (selectedBooking.bookingId || selectedBooking.id) === bookingId
+      ) {
+        setSelectedBooking((prev) => ({ ...prev, ...updatedBooking }));
+      }
+
+      showActionMessage("Checked in successfully.", "success");
+    } catch (error) {
+      handleAuthError(error, "Failed to check in");
+    } finally {
+      setCheckInLoadingMap((prev) => ({ ...prev, [bookingId]: false }));
     }
   };
 
@@ -252,6 +349,127 @@ export default function BookingHistory() {
   const getBookingKey = (booking) =>
     booking.bookingId || booking.id || `${booking.startAt}-${booking.endAt}`;
 
+  const canCheckIn = (booking) => {
+  if (!booking) return false;
+
+  const status = String(booking.status || "").trim().toUpperCase();
+  const checkinStatus = String(booking.checkinStatus || "").toLowerCase();
+
+  if (status !== "APPROVED") return false;
+  if (checkinStatus === "checked_in") return false;
+  if (booking.checkedInAt) return false;
+  if (!booking.startAt) return false;
+
+  const now = new Date();
+  const start = new Date(booking.startAt);
+
+  const allowedFrom = new Date(start.getTime() - 15 * 60 * 1000);
+  const allowedUntil = new Date(start.getTime() + 30 * 60 * 1000);
+
+  console.log("NOW:", now);
+  console.log("START:", start);
+
+  return now >= allowedFrom && now <= allowedUntil;
+};
+
+  const isCheckedIn = (booking) => {
+    const checkinStatus = String(booking?.checkinStatus || "").toLowerCase();
+    return checkinStatus === "checked_in" || !!booking?.checkedInAt;
+  };
+
+  const isBookingFinished = (booking) => {
+    if (!booking?.endAt) return false;
+    return new Date() > new Date(booking.endAt);
+  };
+
+  const shouldShowFeedbackNotification = (booking) => {
+    if (!booking) return false;
+
+    const status = normalizeStatus(booking.status);
+    const bookingId = booking.bookingId || booking.id;
+    const feedbackSubmitted =
+      booking.feedbackSubmitted === true || feedbackStatusMap[bookingId] === true;
+
+    if (feedbackSubmitted) return false;
+    if (!isCheckedIn(booking)) return false;
+    if (!isBookingFinished(booking)) return false;
+
+    if (
+      status === "CANCELLED" ||
+      status === "AUTO_CANCELLED" ||
+      status === "REJECTED" ||
+      status === "NO_SHOW"
+    ) {
+      return false;
+    }
+
+    return true;
+  };
+
+  const canLeaveFeedback = (booking) => {
+    if (!booking) return false;
+
+    const status = normalizeStatus(booking.status);
+    const bookingId = booking.bookingId || booking.id;
+    const alreadySubmitted =
+      booking.feedbackSubmitted === true || feedbackStatusMap[bookingId] === true;
+
+    if (
+      status === "CANCELLED" ||
+      status === "AUTO_CANCELLED" ||
+      status === "REJECTED" ||
+      status === "NO_SHOW"
+    ) {
+      return false;
+    }
+
+    if (alreadySubmitted) {
+      return false;
+    }
+
+    if (status === "COMPLETED") return true;
+
+    return shouldShowFeedbackNotification(booking);
+  };
+
+  const getStatusBadgeStyle = (status) => {
+    const normalized = normalizeStatus(status);
+
+    if (normalized === "COMPLETED") {
+      return { ...styles.statusBadge, backgroundColor: "#dcfce7", color: "#166534" };
+    }
+
+    if (normalized === "CHECKED_IN") {
+      return { ...styles.statusBadge, backgroundColor: "#dbeafe", color: "#1d4ed8" };
+    }
+
+    if (normalized === "APPROVED") {
+      return { ...styles.statusBadge, backgroundColor: "#e0f2fe", color: "#0369a1" };
+    }
+
+    if (normalized === "PENDING") {
+      return { ...styles.statusBadge, backgroundColor: "#fef3c7", color: "#92400e" };
+    }
+
+    if (
+      normalized === "REJECTED" ||
+      normalized === "CANCELLED" ||
+      normalized === "AUTO_CANCELLED"
+    ) {
+      return { ...styles.statusBadge, backgroundColor: "#fee2e2", color: "#b91c1c" };
+    }
+
+    if (normalized === "NO_SHOW") {
+      return { ...styles.statusBadge, backgroundColor: "#f3f4f6", color: "#374151" };
+    }
+
+    return styles.statusBadge;
+  };
+
+  const pendingFeedbackBookings = bookings.filter((booking) =>
+    shouldShowFeedbackNotification(booking)
+  );
+
   if (loading) {
     return (
       <div style={styles.container}>
@@ -266,6 +484,42 @@ export default function BookingHistory() {
       <h2 style={styles.heading}>Booking History</h2>
 
       {pageError && <div style={styles.errorBox}>{pageError}</div>}
+
+      {actionMessage && (
+        <div
+          style={
+            actionMessageType === "error"
+              ? styles.errorBox
+              : styles.successBox
+          }
+        >
+          {actionMessage}
+        </div>
+      )}
+
+      {pendingFeedbackBookings.length > 0 && (
+        <div style={styles.notificationBox}>
+          <h3 style={styles.notificationHeading}>Feedback Reminder</h3>
+          {pendingFeedbackBookings.map((booking) => {
+            const bookingId = booking.bookingId || booking.id;
+            return (
+              <div key={bookingId} style={styles.notificationItem}>
+                <div>
+                  Your booking for <strong>{booking.roomName || "Room"}</strong> on{" "}
+                  <strong>{formatDate(booking.startAt)}</strong> has ended.
+                  Please add your feedback and rating.
+                </div>
+                <button
+                  style={styles.feedbackNowButton}
+                  onClick={() => setSelectedBookingForFeedback(booking)}
+                >
+                  Add Feedback & Rating
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <div style={styles.filterRow}>
         <select
@@ -330,24 +584,63 @@ export default function BookingHistory() {
 
           <tbody>
             {bookings.length > 0 ? (
-              bookings.map((booking) => (
-                <tr key={getBookingKey(booking)}>
-                  <td style={styles.td}>{booking.bookingId || booking.id || "-"}</td>
-                  <td style={styles.td}>{booking.roomName || "-"}</td>
-                  <td style={styles.td}>{formatDate(booking.startAt)}</td>
-                  <td style={styles.td}>{formatTime(booking.startAt)}</td>
-                  <td style={styles.td}>{formatTime(booking.endAt)}</td>
-                  <td style={styles.td}>{booking.status || "-"}</td>
-                  <td style={styles.td}>
-                    <button
-                      onClick={() => handleViewDetails(booking.bookingId || booking.id)}
-                      style={styles.viewButton}
-                    >
-                      View Details
-                    </button>
-                  </td>
-                </tr>
-              ))
+              bookings.map((booking) => {
+                const bookingId = booking.bookingId || booking.id;
+                const feedbackSubmitted =
+                  booking.feedbackSubmitted === true ||
+                  feedbackStatusMap[bookingId] === true;
+                const checkInLoading = checkInLoadingMap[bookingId] === true;
+
+                return (
+                  <tr key={getBookingKey(booking)}>
+                    <td style={styles.td}>{bookingId || "-"}</td>
+                    <td style={styles.td}>{booking.roomName || "-"}</td>
+                    <td style={styles.td}>{formatDate(booking.startAt)}</td>
+                    <td style={styles.td}>{formatTime(booking.startAt)}</td>
+                    <td style={styles.td}>{formatTime(booking.endAt)}</td>
+                    <td style={styles.td}>
+                      <span style={getStatusBadgeStyle(booking.status)}>
+                        {booking.status || "-"}
+                      </span>
+                    </td>
+                    <td style={styles.td}>
+                      <div style={styles.actionGroup}>
+                        <button
+                          onClick={() => handleViewDetails(bookingId)}
+                          style={styles.viewButton}
+                        >
+                          View Details
+                        </button>
+
+                        {canCheckIn(booking) && (
+                          <button
+                            onClick={() => handleCheckIn(booking)}
+                            style={styles.checkInButton}
+                            disabled={checkInLoading}
+                          >
+                            {checkInLoading ? "Checking In..." : "Check In"}
+                          </button>
+                        )}
+
+                        {canLeaveFeedback(booking) && !feedbackSubmitted && (
+                          <button
+                            onClick={() => setSelectedBookingForFeedback(booking)}
+                            style={styles.feedbackButton}
+                          >
+                            Add Feedback & Rating
+                          </button>
+                        )}
+
+                        {feedbackSubmitted && (
+                          <span style={styles.feedbackDoneText}>
+                            Feedback Submitted
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
             ) : (
               <tr>
                 <td colSpan="7" style={styles.emptyCell}>
@@ -363,21 +656,90 @@ export default function BookingHistory() {
         <div style={styles.detailsCard}>
           <h3 style={styles.detailsHeading}>Booking Details</h3>
 
-          <p><strong>Booking ID:</strong> {selectedBooking.bookingId || selectedBooking.id || "-"}</p>
-          <p><strong>Room:</strong> {selectedBooking.roomName || "-"}</p>
-          <p><strong>User:</strong> {selectedBooking.userName || "-"}</p>
-          <p><strong>Start:</strong> {formatDateTime(selectedBooking.startAt)}</p>
-          <p><strong>End:</strong> {formatDateTime(selectedBooking.endAt)}</p>
-          <p><strong>Purpose:</strong> {selectedBooking.purpose || "-"}</p>
-          <p><strong>Attendee Count:</strong> {selectedBooking.attendeeCount ?? "-"}</p>
-          <p><strong>Duration:</strong> {selectedBooking.durationMinutes ?? 0} minutes</p>
-          <p><strong>Status:</strong> {selectedBooking.status || "-"}</p>
-          <p><strong>Check-in Status:</strong> {selectedBooking.checkinStatus || "-"}</p>
-          <p><strong>Cancellation Reason:</strong> {selectedBooking.cancellationReason || "-"}</p>
-          <p><strong>Approval Time:</strong> {formatDateTime(selectedBooking.approvalTime)}</p>
-          <p><strong>Booked At:</strong> {formatDateTime(selectedBooking.bookedAt)}</p>
-          <p><strong>Created At:</strong> {formatDateTime(selectedBooking.createdAt)}</p>
-          <p><strong>Updated At:</strong> {formatDateTime(selectedBooking.updatedAt)}</p>
+          <p>
+            <strong>Booking ID:</strong>{" "}
+            {selectedBooking.bookingId || selectedBooking.id || "-"}
+          </p>
+          <p>
+            <strong>Room:</strong> {selectedBooking.roomName || "-"}
+          </p>
+          <p>
+            <strong>User:</strong> {selectedBooking.userName || "-"}
+          </p>
+          <p>
+            <strong>Start:</strong> {formatDateTime(selectedBooking.startAt)}
+          </p>
+          <p>
+            <strong>End:</strong> {formatDateTime(selectedBooking.endAt)}
+          </p>
+          <p>
+            <strong>Purpose:</strong> {selectedBooking.purpose || "-"}
+          </p>
+          <p>
+            <strong>Attendee Count:</strong>{" "}
+            {selectedBooking.attendeeCount ?? "-"}
+          </p>
+          <p>
+            <strong>Duration:</strong>{" "}
+            {selectedBooking.durationMinutes ?? 0} minutes
+          </p>
+          <p>
+            <strong>Status:</strong> {selectedBooking.status || "-"}
+          </p>
+          <p>
+            <strong>Check-in Status:</strong>{" "}
+            {selectedBooking.checkinStatus || "-"}
+          </p>
+          <p>
+            <strong>Checked In At:</strong>{" "}
+            {formatDateTime(selectedBooking.checkedInAt)}
+          </p>
+          <p>
+            <strong>Present:</strong>{" "}
+            {selectedBooking.isPresent === true
+              ? "Yes"
+              : selectedBooking.isPresent === false
+              ? "No"
+              : "-"}
+          </p>
+          <p>
+            <strong>Attendance Marked At:</strong>{" "}
+            {formatDateTime(selectedBooking.attendanceMarkedAt)}
+          </p>
+          <p>
+            <strong>Feedback Submitted:</strong>{" "}
+            {selectedBooking.feedbackSubmitted === true ? "Yes" : "No"}
+          </p>
+          <p>
+            <strong>Cancellation Reason:</strong>{" "}
+            {selectedBooking.cancellationReason || "-"}
+          </p>
+          <p>
+            <strong>Approval Time:</strong>{" "}
+            {formatDateTime(selectedBooking.approvalTime)}
+          </p>
+          <p>
+            <strong>Booked At:</strong>{" "}
+            {formatDateTime(selectedBooking.bookedAt)}
+          </p>
+          <p>
+            <strong>Created At:</strong>{" "}
+            {formatDateTime(selectedBooking.createdAt)}
+          </p>
+          <p>
+            <strong>Updated At:</strong>{" "}
+            {formatDateTime(selectedBooking.updatedAt)}
+          </p>
+
+          {canLeaveFeedback(selectedBooking) &&
+            !(selectedBooking.feedbackSubmitted === true) && (
+              <button
+                onClick={() => setSelectedBookingForFeedback(selectedBooking)}
+                style={styles.feedbackButton}
+              >
+                Add Feedback & Rating
+              </button>
+            )}
 
           <button
             onClick={() => setSelectedBooking(null)}
@@ -385,6 +747,49 @@ export default function BookingHistory() {
           >
             Close Details
           </button>
+        </div>
+      )}
+
+      {selectedBookingForFeedback && (
+        <div style={styles.feedbackFormWrapper}>
+          <h3 style={styles.feedbackHeading}>Enter Feedback and Rating</h3>
+
+          <FeedbackForm
+            booking={selectedBookingForFeedback}
+            onSuccess={() => {
+              const bookingId =
+                selectedBookingForFeedback.bookingId ||
+                selectedBookingForFeedback.id;
+
+              setFeedbackStatusMap((prev) => ({
+                ...prev,
+                [bookingId]: true,
+              }));
+
+              setBookings((prev) =>
+                prev.map((item) => {
+                  const itemId = item.bookingId || item.id;
+                  return itemId === bookingId
+                    ? { ...item, feedbackSubmitted: true }
+                    : item;
+                })
+              );
+
+              if (
+                selectedBooking &&
+                (selectedBooking.bookingId || selectedBooking.id) === bookingId
+              ) {
+                setSelectedBooking((prev) => ({
+                  ...prev,
+                  feedbackSubmitted: true,
+                }));
+              }
+
+              setSelectedBookingForFeedback(null);
+              showActionMessage("Feedback submitted successfully.", "success");
+            }}
+            onCancel={() => setSelectedBookingForFeedback(null)}
+          />
         </div>
       )}
     </div>
@@ -412,6 +817,45 @@ const styles = {
     backgroundColor: "#fde2e2",
     color: "#9b1c1c",
     border: "1px solid #f5b5b5",
+    fontWeight: "600",
+  },
+  successBox: {
+    marginBottom: "16px",
+    padding: "12px 14px",
+    borderRadius: "8px",
+    backgroundColor: "#e7f8ec",
+    color: "#166534",
+    border: "1px solid #b7ebc6",
+    fontWeight: "600",
+  },
+  notificationBox: {
+    marginBottom: "20px",
+    padding: "16px",
+    borderRadius: "10px",
+    backgroundColor: "#fff7ed",
+    border: "1px solid #fdba74",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+  },
+  notificationHeading: {
+    margin: "0 0 12px 0",
+    color: "#9a3412",
+  },
+  notificationItem: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "12px",
+    flexWrap: "wrap",
+    padding: "10px 0",
+    borderBottom: "1px solid #fed7aa",
+  },
+  feedbackNowButton: {
+    padding: "9px 14px",
+    backgroundColor: "#ea580c",
+    color: "#fff",
+    border: "none",
+    borderRadius: "6px",
+    cursor: "pointer",
     fontWeight: "600",
   },
   filterRow: {
@@ -475,11 +919,18 @@ const styles = {
   td: {
     padding: "12px",
     border: "1px solid #ddd",
+    verticalAlign: "top",
   },
   emptyCell: {
     padding: "20px",
     textAlign: "center",
     border: "1px solid #ddd",
+  },
+  actionGroup: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "8px",
+    alignItems: "center",
   },
   viewButton: {
     padding: "8px 12px",
@@ -488,6 +939,35 @@ const styles = {
     border: "none",
     borderRadius: "6px",
     cursor: "pointer",
+  },
+  checkInButton: {
+    padding: "8px 12px",
+    backgroundColor: "#0d6efd",
+    color: "#fff",
+    border: "none",
+    borderRadius: "6px",
+    cursor: "pointer",
+  },
+  feedbackButton: {
+    padding: "8px 12px",
+    backgroundColor: "#fd7e14",
+    color: "#fff",
+    border: "none",
+    borderRadius: "6px",
+    cursor: "pointer",
+  },
+  feedbackDoneText: {
+    color: "green",
+    fontWeight: "600",
+  },
+  statusBadge: {
+    display: "inline-block",
+    padding: "6px 10px",
+    borderRadius: "999px",
+    fontSize: "12px",
+    fontWeight: "700",
+    backgroundColor: "#eef2f7",
+    color: "#334155",
   },
   detailsCard: {
     marginTop: "30px",
@@ -509,5 +989,16 @@ const styles = {
     border: "none",
     borderRadius: "6px",
     cursor: "pointer",
+  },
+  feedbackFormWrapper: {
+    marginTop: "30px",
+    padding: "20px",
+    borderRadius: "10px",
+    backgroundColor: "#fff",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+  },
+  feedbackHeading: {
+    marginBottom: "16px",
+    color: "#222",
   },
 };

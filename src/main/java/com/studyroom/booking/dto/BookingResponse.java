@@ -38,6 +38,16 @@ public class BookingResponse {
     private String approvedByName;
 
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ssXXX")
+    private OffsetDateTime checkedInAt;
+
+    private Boolean isPresent;
+
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ssXXX")
+    private OffsetDateTime attendanceMarkedAt;
+
+    private Boolean feedbackSubmitted;
+
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ssXXX")
     private OffsetDateTime createdAt;
 
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ssXXX")
@@ -66,6 +76,10 @@ public class BookingResponse {
             OffsetDateTime bookedAt,
             UUID approvedById,
             String approvedByName,
+            OffsetDateTime checkedInAt,
+            Boolean isPresent,
+            OffsetDateTime attendanceMarkedAt,
+            Boolean feedbackSubmitted,
             OffsetDateTime createdAt,
             OffsetDateTime updatedAt
     ) {
@@ -88,6 +102,10 @@ public class BookingResponse {
         this.bookedAt = bookedAt;
         this.approvedById = approvedById;
         this.approvedByName = approvedByName;
+        this.checkedInAt = checkedInAt;
+        this.isPresent = isPresent;
+        this.attendanceMarkedAt = attendanceMarkedAt;
+        this.feedbackSubmitted = feedbackSubmitted;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
     }
@@ -242,6 +260,38 @@ public class BookingResponse {
 
     public void setApprovedByName(String approvedByName) {
         this.approvedByName = approvedByName;
+    }
+
+    public OffsetDateTime getCheckedInAt() {
+        return checkedInAt;
+    }
+
+    public void setCheckedInAt(OffsetDateTime checkedInAt) {
+        this.checkedInAt = checkedInAt;
+    }
+
+    public Boolean getIsPresent() {
+        return isPresent;
+    }
+
+    public void setIsPresent(Boolean isPresent) {
+        this.isPresent = isPresent;
+    }
+
+    public OffsetDateTime getAttendanceMarkedAt() {
+        return attendanceMarkedAt;
+    }
+
+    public void setAttendanceMarkedAt(OffsetDateTime attendanceMarkedAt) {
+        this.attendanceMarkedAt = attendanceMarkedAt;
+    }
+
+    public Boolean getFeedbackSubmitted() {
+        return feedbackSubmitted;
+    }
+
+    public void setFeedbackSubmitted(Boolean feedbackSubmitted) {
+        this.feedbackSubmitted = feedbackSubmitted;
     }
 
     public OffsetDateTime getCreatedAt() {

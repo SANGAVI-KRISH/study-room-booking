@@ -1,13 +1,10 @@
 package com.studyroom.booking.service;
 
-import java.util.Optional;
-
 import com.studyroom.booking.dto.AuthResponse;
 import com.studyroom.booking.dto.LoginRequest;
 import com.studyroom.booking.model.User;
 import com.studyroom.booking.repository.UserRepository;
 import com.studyroom.booking.security.JwtUtil;
-
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -33,26 +30,39 @@ public class AuthService {
     }
 
     public AuthResponse login(LoginRequest loginRequest) {
-        Optional<User> userOptional = userRepository.findByEmail(loginRequest.getEmail());
+        String email = loginRequest.getEmail() == null
+                ? ""
+                : loginRequest.getEmail().trim().toLowerCase();
 
-        if (userOptional.isEmpty()) {
-            throw new RuntimeException("User not registered");
+        String password = loginRequest.getPassword() == null
+                ? ""
+                : loginRequest.getPassword();
+
+        if (email.isBlank()) {
+            throw new BadCredentialsException("Email is required");
+        }
+
+        if (password.isBlank()) {
+            throw new BadCredentialsException("Password is required");
         }
 
         try {
             authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(
-                            loginRequest.getEmail(),
-                            loginRequest.getPassword()
-                    )
+                    new UsernamePasswordAuthenticationToken(email, password)
             );
         } catch (BadCredentialsException e) {
             throw new BadCredentialsException("Invalid credentials");
         } catch (Exception e) {
-            throw new BadCredentialsException("Invalid credentials");
+            e.printStackTrace();
+            throw new RuntimeException("Authentication failed", e);
         }
 
-        User user = userOptional.get();
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found after authentication"));
+
+        if (user.getRole() == null) {
+            throw new RuntimeException("User role is missing");
+        }
 
         String token = jwtUtil.generateToken(
                 user.getEmail(),
@@ -86,11 +96,13 @@ public class AuthService {
             throw new RuntimeException("Role is required");
         }
 
-        if (userRepository.findByEmail(user.getEmail()).isPresent()) {
+        String normalizedEmail = user.getEmail().trim().toLowerCase();
+
+        if (userRepository.findByEmail(normalizedEmail).isPresent()) {
             throw new RuntimeException("User already exists");
         }
 
-        user.setEmail(user.getEmail().trim().toLowerCase());
+        user.setEmail(normalizedEmail);
         user.setName(user.getName().trim());
         user.setPassword(passwordEncoder.encode(user.getPassword()));
 

@@ -5,7 +5,9 @@ public enum BookingStatus {
     APPROVED("approved"),
     REJECTED("rejected"),
     CANCELLED("cancelled"),
+    CHECKED_IN("checked_in"),
     COMPLETED("completed"),
+    NO_SHOW("no_show"),
     AUTO_CANCELLED("auto_cancelled");
 
     private final String value;

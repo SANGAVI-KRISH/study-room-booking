@@ -8,6 +8,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Repository
@@ -33,7 +34,14 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
     List<Booking> findByStatusIn(List<BookingStatus> statuses);
 
-    List<Booking> findByStatusAndReminderSentFalse(BookingStatus status);
+    @Query("""
+        SELECT b
+        FROM Booking b
+        WHERE b.status = :status
+          AND (b.reminderSent = false OR b.reminderSent IS NULL)
+        ORDER BY b.startAt ASC
+    """)
+    List<Booking> findPendingReminderBookings(BookingStatus status);
 
     List<Booking> findByUser_IdAndStatus(UUID userId, BookingStatus status);
 
@@ -110,6 +118,55 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             OffsetDateTime endAt,
             OffsetDateTime startAt
     );
+
+    // ================= CHECK-IN / ATTENDANCE =================
+
+    Optional<Booking> findByIdAndUser_Id(UUID bookingId, UUID userId);
+
+    List<Booking> findByStatusAndStartAtLessThanEqualAndStartAtGreaterThanEqual(
+            BookingStatus status,
+            OffsetDateTime latestAllowedStart,
+            OffsetDateTime earliestAllowedStart
+    );
+
+    List<Booking> findByStatusAndEndAtBefore(BookingStatus status, OffsetDateTime time);
+
+    List<Booking> findByStatusInAndEndAtBefore(List<BookingStatus> statuses, OffsetDateTime time);
+
+    List<Booking> findByStatusAndFeedbackSubmittedFalse(BookingStatus status);
+
+    List<Booking> findByUser_IdAndStatusAndFeedbackSubmittedFalse(UUID userId, BookingStatus status);
+
+    @Query("""
+        SELECT b
+        FROM Booking b
+        WHERE b.status = :status
+          AND b.endAt <= :now
+          AND (b.isPresent = true OR b.checkinStatus = 'checked_in')
+        ORDER BY b.endAt ASC
+    """)
+    List<Booking> findBookingsToMarkCompleted(BookingStatus status, OffsetDateTime now);
+
+    @Query("""
+        SELECT b
+        FROM Booking b
+        WHERE b.status = :status
+          AND b.endAt <= :now
+          AND (b.isPresent = false OR b.isPresent IS NULL)
+          AND (b.checkinStatus = 'not_checked_in' OR b.checkinStatus IS NULL)
+        ORDER BY b.endAt ASC
+    """)
+    List<Booking> findBookingsToMarkNoShow(BookingStatus status, OffsetDateTime now);
+
+    @Query("""
+        SELECT b
+        FROM Booking b
+        WHERE b.user.id = :userId
+          AND b.status = :status
+          AND (b.feedbackSubmitted = false OR b.feedbackSubmitted IS NULL)
+        ORDER BY b.endAt DESC
+    """)
+    List<Booking> findPendingFeedbackBookings(UUID userId, BookingStatus status);
 
     // ================= COUNT METHODS =================
 

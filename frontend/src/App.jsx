@@ -21,6 +21,8 @@ import AdminBookingApproval from "./pages/AdminBookingApproval";
 import AdminReports from "./pages/AdminReports";
 import ManageTimeSlots from "./pages/ManageTimeSlots";
 import RoomSlots from "./pages/RoomSlots";
+import AdminFeedback from "./pages/AdminFeedback";
+
 const API_BASE_URL = "http://localhost:8080";
 
 /* ================= HOME PAGE ================= */
@@ -244,6 +246,9 @@ function LoginPage({ initialMode = "login" }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (loading) return;
+
     setMessage("");
 
     const { url, payload } = getUrlAndPayload();
@@ -281,7 +286,9 @@ function LoginPage({ initialMode = "login" }) {
           const token = data?.token ?? data?.jwt ?? "";
           const role = data?.role ?? data?.user?.role ?? "";
           const email =
-            data?.email ?? data?.user?.email ?? formData.email.trim();
+            data?.email ??
+            data?.user?.email ??
+            formData.email.trim().toLowerCase();
           const name =
             data?.name ??
             data?.fullName ??
@@ -354,6 +361,9 @@ function LoginPage({ initialMode = "login" }) {
           setMode("login");
         }
       } else {
+        if (response.status === 401) {
+          clearStoredAuth();
+        }
         setMessage(extractErrorMessage(data, response));
       }
     } catch (error) {
@@ -563,8 +573,10 @@ export default function App() {
           path="/forgot-password"
           element={<LoginPage initialMode="forgot" />}
         />
+
         <Route path="/manage-time-slots" element={<ManageTimeSlots />} />
         <Route path="/room-slots" element={<RoomSlots />} />
+
         <Route
           path="/admin"
           element={
@@ -582,7 +594,7 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-        <Route path="/admin/reports" element={<AdminReports />} />
+
         <Route
           path="/student"
           element={
@@ -597,6 +609,33 @@ export default function App() {
           element={
             <ProtectedRoute allowedRoles={["ADMIN"]}>
               <ManageRooms />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/admin/reports"
+          element={
+            <ProtectedRoute allowedRoles={["ADMIN"]}>
+              <AdminReports />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/admin/booking-approval"
+          element={
+            <ProtectedRoute allowedRoles={["ADMIN", "STAFF"]}>
+              <AdminBookingApproval />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/admin/feedback"
+          element={
+            <ProtectedRoute allowedRoles={["ADMIN"]}>
+              <AdminFeedback />
             </ProtectedRoute>
           }
         />
@@ -624,15 +663,6 @@ export default function App() {
           element={
             <ProtectedRoute allowedRoles={["ADMIN", "STAFF", "STUDENT"]}>
               <BookingHistory />
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/admin/booking-approval"
-          element={
-            <ProtectedRoute allowedRoles={["ADMIN", "STAFF"]}>
-              <AdminBookingApproval />
             </ProtectedRoute>
           }
         />

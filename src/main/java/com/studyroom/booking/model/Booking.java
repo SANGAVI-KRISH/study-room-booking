@@ -50,6 +50,18 @@ public class Booking {
     @Column(name = "checkin_status", nullable = false, length = 20)
     private String checkinStatus = "not_checked_in";
 
+    @Column(name = "checked_in_at")
+    private OffsetDateTime checkedInAt;
+
+    @Column(name = "is_present", nullable = false)
+    private Boolean isPresent = false;
+
+    @Column(name = "attendance_marked_at")
+    private OffsetDateTime attendanceMarkedAt;
+
+    @Column(name = "feedback_submitted", nullable = false)
+    private Boolean feedbackSubmitted = false;
+
     @Column(name = "cancellation_reason")
     private String cancellationReason;
 
@@ -87,12 +99,11 @@ public class Booking {
         this.attendeeCount = attendeeCount;
         this.status = BookingStatus.PENDING;
         this.checkinStatus = "not_checked_in";
+        this.isPresent = false;
+        this.feedbackSubmitted = false;
         this.reminderSent = false;
     }
 
-    // ======================================================
-    // 🔥 NEW: CENTRALIZED CANCEL METHOD
-    // ======================================================
     public void cancel(String reason) {
         this.status = BookingStatus.CANCELLED;
         this.cancellationReason = reason;
@@ -119,6 +130,14 @@ public class Booking {
 
         if (this.reminderSent == null) {
             this.reminderSent = false;
+        }
+
+        if (this.isPresent == null) {
+            this.isPresent = false;
+        }
+
+        if (this.feedbackSubmitted == null) {
+            this.feedbackSubmitted = false;
         }
 
         if (this.purpose != null) {
@@ -170,51 +189,209 @@ public class Booking {
         return other != null && overlapsWith(other.getStartAt(), other.getEndAt());
     }
 
-    public boolean isPending() { return BookingStatus.PENDING.equals(this.status); }
-    public boolean isApproved() { return BookingStatus.APPROVED.equals(this.status); }
-    public boolean isRejected() { return BookingStatus.REJECTED.equals(this.status); }
-    public boolean isCancelled() { return BookingStatus.CANCELLED.equals(this.status); }
-    public boolean isCompleted() { return BookingStatus.COMPLETED.equals(this.status); }
-    public boolean isAutoCancelled() { return BookingStatus.AUTO_CANCELLED.equals(this.status); }
+    public boolean isPending() {
+        return BookingStatus.PENDING.equals(this.status);
+    }
+
+    public boolean isApproved() {
+        return BookingStatus.APPROVED.equals(this.status);
+    }
+
+    public boolean isRejected() {
+        return BookingStatus.REJECTED.equals(this.status);
+    }
+
+    public boolean isCancelled() {
+        return BookingStatus.CANCELLED.equals(this.status);
+    }
+
+    public boolean isCheckedIn() {
+        return BookingStatus.CHECKED_IN.equals(this.status);
+    }
+
+    public boolean isCompleted() {
+        return BookingStatus.COMPLETED.equals(this.status);
+    }
+
+    public boolean isNoShow() {
+        return BookingStatus.NO_SHOW.equals(this.status);
+    }
+
+    public boolean isAutoCancelled() {
+        return BookingStatus.AUTO_CANCELLED.equals(this.status);
+    }
 
     public boolean isActiveBooking() {
-        return isPending() || isApproved();
+        return isPending() || isApproved() || isCheckedIn();
     }
 
     // ================= GETTERS & SETTERS =================
 
-    public UUID getId() { return id; }
-    public StudyRoom getRoom() { return room; }
-    public User getUser() { return user; }
-    public User getApprovedBy() { return approvedBy; }
-    public OffsetDateTime getStartAt() { return startAt; }
-    public OffsetDateTime getEndAt() { return endAt; }
-    public String getPurpose() { return purpose; }
-    public Integer getAttendeeCount() { return attendeeCount; }
-    public BookingStatus getStatus() { return status; }
-    public String getCheckinStatus() { return checkinStatus; }
-    public String getCancellationReason() { return cancellationReason; }
-    public OffsetDateTime getApprovalTime() { return approvalTime; }
-    public String getQrToken() { return qrToken; }
-    public Boolean getReminderSent() { return reminderSent; }
-    public OffsetDateTime getBookedAt() { return bookedAt; }
-    public OffsetDateTime getCreatedAt() { return createdAt; }
-    public OffsetDateTime getUpdatedAt() { return updatedAt; }
+    public UUID getId() {
+        return id;
+    }
 
-    public void setRoom(StudyRoom room) { this.room = room; }
-    public void setUser(User user) { this.user = user; }
-    public void setApprovedBy(User approvedBy) { this.approvedBy = approvedBy; }
-    public void setStartAt(OffsetDateTime startAt) { this.startAt = startAt; }
-    public void setEndAt(OffsetDateTime endAt) { this.endAt = endAt; }
-    public void setPurpose(String purpose) { this.purpose = purpose; }
-    public void setAttendeeCount(Integer attendeeCount) { this.attendeeCount = attendeeCount; }
-    public void setStatus(BookingStatus status) { this.status = status; }
-    public void setCheckinStatus(String checkinStatus) { this.checkinStatus = checkinStatus; }
-    public void setCancellationReason(String cancellationReason) { this.cancellationReason = cancellationReason; }
-    public void setApprovalTime(OffsetDateTime approvalTime) { this.approvalTime = approvalTime; }
-    public void setQrToken(String qrToken) { this.qrToken = qrToken; }
-    public void setReminderSent(Boolean reminderSent) { this.reminderSent = reminderSent; }
-    public void setBookedAt(OffsetDateTime bookedAt) { this.bookedAt = bookedAt; }
-    public void setCreatedAt(OffsetDateTime createdAt) { this.createdAt = createdAt; }
-    public void setUpdatedAt(OffsetDateTime updatedAt) { this.updatedAt = updatedAt; }
+    public StudyRoom getRoom() {
+        return room;
+    }
+
+    public User getUser() {
+        return user;
+    }
+
+    public User getApprovedBy() {
+        return approvedBy;
+    }
+
+    public OffsetDateTime getStartAt() {
+        return startAt;
+    }
+
+    public OffsetDateTime getEndAt() {
+        return endAt;
+    }
+
+    public String getPurpose() {
+        return purpose;
+    }
+
+    public Integer getAttendeeCount() {
+        return attendeeCount;
+    }
+
+    public BookingStatus getStatus() {
+        return status;
+    }
+
+    public String getCheckinStatus() {
+        return checkinStatus;
+    }
+
+    public OffsetDateTime getCheckedInAt() {
+        return checkedInAt;
+    }
+
+    public Boolean getIsPresent() {
+        return isPresent;
+    }
+
+    public OffsetDateTime getAttendanceMarkedAt() {
+        return attendanceMarkedAt;
+    }
+
+    public Boolean getFeedbackSubmitted() {
+        return feedbackSubmitted;
+    }
+
+    public String getCancellationReason() {
+        return cancellationReason;
+    }
+
+    public OffsetDateTime getApprovalTime() {
+        return approvalTime;
+    }
+
+    public String getQrToken() {
+        return qrToken;
+    }
+
+    public Boolean getReminderSent() {
+        return reminderSent;
+    }
+
+    public OffsetDateTime getBookedAt() {
+        return bookedAt;
+    }
+
+    public OffsetDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public OffsetDateTime getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void setId(UUID id) {
+        this.id = id;
+    }
+
+    public void setRoom(StudyRoom room) {
+        this.room = room;
+    }
+
+    public void setUser(User user) {
+        this.user = user;
+    }
+
+    public void setApprovedBy(User approvedBy) {
+        this.approvedBy = approvedBy;
+    }
+
+    public void setStartAt(OffsetDateTime startAt) {
+        this.startAt = startAt;
+    }
+
+    public void setEndAt(OffsetDateTime endAt) {
+        this.endAt = endAt;
+    }
+
+    public void setPurpose(String purpose) {
+        this.purpose = purpose;
+    }
+
+    public void setAttendeeCount(Integer attendeeCount) {
+        this.attendeeCount = attendeeCount;
+    }
+
+    public void setStatus(BookingStatus status) {
+        this.status = status;
+    }
+
+    public void setCheckinStatus(String checkinStatus) {
+        this.checkinStatus = checkinStatus;
+    }
+
+    public void setCheckedInAt(OffsetDateTime checkedInAt) {
+        this.checkedInAt = checkedInAt;
+    }
+
+    public void setIsPresent(Boolean isPresent) {
+        this.isPresent = isPresent;
+    }
+
+    public void setAttendanceMarkedAt(OffsetDateTime attendanceMarkedAt) {
+        this.attendanceMarkedAt = attendanceMarkedAt;
+    }
+
+    public void setFeedbackSubmitted(Boolean feedbackSubmitted) {
+        this.feedbackSubmitted = feedbackSubmitted;
+    }
+
+    public void setCancellationReason(String cancellationReason) {
+        this.cancellationReason = cancellationReason;
+    }
+
+    public void setApprovalTime(OffsetDateTime approvalTime) {
+        this.approvalTime = approvalTime;
+    }
+
+    public void setQrToken(String qrToken) {
+        this.qrToken = qrToken;
+    }
+
+    public void setReminderSent(Boolean reminderSent) {
+        this.reminderSent = reminderSent;
+    }
+
+    public void setBookedAt(OffsetDateTime bookedAt) {
+        this.bookedAt = bookedAt;
+    }
+
+    public void setCreatedAt(OffsetDateTime createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public void setUpdatedAt(OffsetDateTime updatedAt) {
+        this.updatedAt = updatedAt;
+    }
 }

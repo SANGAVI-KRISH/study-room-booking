@@ -1,0 +1,5 @@
+package com.studyroom.booking.dto;
+
+public class WaitlistRequestDto {
+    
+}
