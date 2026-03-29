@@ -3,6 +3,8 @@ const BOOKING_BASE_URL = "http://localhost:8080/api/bookings";
 const ADMIN_DASHBOARD_BASE_URL = "http://localhost:8080/api/admin/dashboard";
 const REPORT_BASE_URL = "http://localhost:8080/api/reports";
 const TIME_SLOT_BASE_URL = "http://localhost:8080/api/time-slots";
+const PROFILE_BASE_URL = "http://localhost:8080/api/profile";
+const USER_BASE_URL = "http://localhost:8080/api/users";
 
 /* ---------------- AUTH HELPERS ---------------- */
 
@@ -1117,3 +1119,89 @@ export async function checkInBooking(bookingId, userId) {
 
   return handleResponse(response, "Failed to check in");
 }
+
+/* ---------------- PROFILE APIs ---------------- */
+
+/* GET USER PROFILE (by email) */
+export async function getUserProfile(email) {
+  if (!email || typeof email !== "string" || !email.trim()) {
+    throw new Error("Email is required");
+  }
+
+  const response = await fetch(`${PROFILE_BASE_URL}/${encodeURIComponent(email.trim())}`, {
+    method: "GET",
+    headers: getAuthHeaders(false),
+  });
+
+  return handleResponse(response, "Failed to fetch profile");
+}
+
+/* UPDATE USER PROFILE */
+export async function updateUserProfile(email, profileData) {
+  if (!email || typeof email !== "string" || !email.trim()) {
+    throw new Error("Email is required");
+  }
+
+  if (!profileData) {
+    throw new Error("Profile data is required");
+  }
+
+  const payload = {
+    name: profileData.name?.trim() || "",
+    department: profileData.department?.trim() || "",
+    phone: profileData.phone?.trim() || "",
+  };
+
+  const response = await fetch(`${PROFILE_BASE_URL}/${encodeURIComponent(email.trim())}`, {
+    method: "PUT",
+    headers: getAuthHeaders(true),
+    body: JSON.stringify(payload),
+  });
+
+  return handleResponse(response, "Failed to update profile");
+}
+
+/* UPDATE PASSWORD */
+export async function updateUserPassword(email, passwordData) {
+  if (!email || typeof email !== "string" || !email.trim()) {
+    throw new Error("Email is required");
+  }
+
+  if (!passwordData) {
+    throw new Error("Password data is required");
+  }
+
+  const payload = {
+    currentPassword: passwordData.currentPassword,
+    newPassword: passwordData.newPassword,
+    confirmPassword: passwordData.confirmPassword,
+  };
+
+  const response = await fetch(
+    `${PROFILE_BASE_URL}/${encodeURIComponent(email.trim())}/password`,
+    {
+      method: "PUT",
+      headers: getAuthHeaders(true),
+      body: JSON.stringify(payload),
+    }
+  );
+
+  return handleResponse(response, "Failed to update password");
+}
+
+export const getAllUsers = async () => {
+  const response = await fetch("http://localhost:8080/api/admin/users", {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${localStorage.getItem("token")}`, // if using JWT
+    },
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || "Failed to fetch users");
+  }
+
+  return response.json();
+};

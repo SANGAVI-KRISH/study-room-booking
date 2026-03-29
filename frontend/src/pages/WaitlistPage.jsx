@@ -1,16 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { bookRoom } from "../api/roomApi";
-import "./RoomAvailability.css";
 import { getRoomFeedback } from "../api/feedbackApi";
 import FeedbackList from "../components/FeedbackList";
+import "./RoomAvailability.css";
 
 const API_BASE_URL = "http://localhost:8080";
 const APP_TIMEZONE_OFFSET = "+05:30";
 const BOOKING_STEP_SECONDS = 1800;
 const WAITLIST_BASE_URL = `${API_BASE_URL}/api/waitlist`;
 
-export default function RoomAvailability() {
+export default function RoomWaitlist() {
   const navigate = useNavigate();
 
   const [roomFeedbackSummary, setRoomFeedbackSummary] = useState(null);
@@ -61,17 +60,10 @@ export default function RoomAvailability() {
     location: "",
     roomId: "",
     date: "",
-    time: "",
+    startTime: "",
+    endTime: "",
     maxPrice: "",
     facilities: "",
-  };
-
-  const initialBookingForm = {
-    selectedWindowId: "",
-    startAt: "",
-    endAt: "",
-    purpose: "",
-    attendeeCount: "1",
   };
 
   const [filters, setFilters] = useState(initialFilters);
@@ -79,21 +71,22 @@ export default function RoomAvailability() {
   const [rooms, setRooms] = useState([]);
   const [roomSlotsMap, setRoomSlotsMap] = useState({});
   const [selectedRoomSlots, setSelectedRoomSlots] = useState([]);
+  const [myWaitlistEntries, setMyWaitlistEntries] = useState([]);
 
   const [loading, setLoading] = useState(false);
   const [slotLoading, setSlotLoading] = useState(false);
   const [searchingAvailability, setSearchingAvailability] = useState(false);
-  const [bookingRoomId, setBookingRoomId] = useState(null);
-  const [waitlistRoomId, setWaitlistRoomId] = useState(null);
+  const [joiningRoomId, setJoiningRoomId] = useState(null);
   const [waitlistAutoAssign, setWaitlistAutoAssign] = useState(true);
 
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  const [bookingModalOpen, setBookingModalOpen] = useState(false);
+  const [waitlistModalOpen, setWaitlistModalOpen] = useState(false);
   const [selectedRoom, setSelectedRoom] = useState(null);
-  const [bookingForm, setBookingForm] = useState(initialBookingForm);
-  const [lastBookingDetails, setLastBookingDetails] = useState(null);
+  const [selectedStartTime, setSelectedStartTime] = useState("");
+  const [selectedEndTime, setSelectedEndTime] = useState("");
+  const [timeError, setTimeError] = useState("");
 
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [galleryImages, setGalleryImages] = useState([]);
@@ -118,6 +111,7 @@ export default function RoomAvailability() {
   const clearAlerts = () => {
     setMessage("");
     setError("");
+    setTimeError("");
   };
 
   useEffect(() => {
@@ -128,17 +122,18 @@ export default function RoomAvailability() {
         if (e.key === "ArrowRight" && galleryImages.length > 1) showNextImage();
       }
 
-      if (bookingModalOpen && e.key === "Escape") {
-        closeBookingModal();
+      if (waitlistModalOpen && e.key === "Escape") {
+        closeWaitlistModal();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [galleryOpen, galleryImages.length, bookingModalOpen]);
+  }, [galleryOpen, galleryImages.length, waitlistModalOpen]);
 
   useEffect(() => {
     fetchRooms();
+    fetchMyWaitlistEntries();
   }, []);
 
   useEffect(() => {
@@ -203,8 +198,6 @@ export default function RoomAvailability() {
     filters.roomId,
   ]);
 
-  // BUG FIX 1: Removed the illegal useEffect call that was inside loadSlotsForSelectedRoom.
-  // Moved it here at the top level where hooks must be called.
   useEffect(() => {
     if (!selectedRoom?.id) {
       setSelectedRoomSlots([]);
@@ -238,7 +231,8 @@ export default function RoomAvailability() {
         filters.location.trim() ||
         filters.roomId ||
         filters.date ||
-        filters.time ||
+        filters.startTime ||
+        filters.endTime ||
         filters.maxPrice !== "" ||
         filters.facilities.trim()
     );
@@ -276,57 +270,60 @@ export default function RoomAvailability() {
     }
   };
 
+  const fetchMyWaitlistEntries = async () => {
+    const userId = localStorage.getItem("userId");
+    const token = localStorage.getItem("token");
+    
+    if (!userId || !token) return;
+    
+    try {
+      const res = await fetch(`${WAITLIST_BASE_URL}/user/${userId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setMyWaitlistEntries(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("Failed to fetch waitlist entries:", err);
+    }
+  };
+
   const pad2 = (n) => String(n).padStart(2, "0");
 
-  const isUuid = (value) =>
-    typeof value === "string" &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      value
-    );
-
-  const addOneDay = (dateStr) => {
-    const d = new Date(`${dateStr}T00:00:00`);
-    d.setDate(d.getDate() + 1);
-    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(
-      d.getDate()
-    )}`;
-  };
-
-  const parseTimeString = (timeValue) => {
-    if (!timeValue) return null;
-
-    if (typeof timeValue === "string") {
-      const trimmed = timeValue.trim();
-      const parts = trimmed.split(":");
-      if (parts.length >= 2) {
-        return `${pad2(Number(parts[0]))}:${pad2(Number(parts[1]))}:00`;
-      }
-    }
-
-    if (
-      typeof timeValue === "object" &&
-      timeValue.hour !== undefined &&
-      timeValue.minute !== undefined
-    ) {
-      return `${pad2(Number(timeValue.hour))}:${pad2(
-        Number(timeValue.minute)
-      )}:00`;
-    }
-
-    return null;
-  };
-
   const buildDateTimeFromDateAndTime = (dateStr, timeValue) => {
-    const normalizedTime = parseTimeString(timeValue);
-    if (!dateStr || !normalizedTime) return null;
-    return `${dateStr}T${normalizedTime}${APP_TIMEZONE_OFFSET}`;
+    if (!dateStr || !timeValue) return null;
+    const parts = timeValue.split(":");
+    if (parts.length < 2) return null;
+    const hh = pad2(Number(parts[0]));
+    const mm = pad2(Number(parts[1]));
+    return `${dateStr}T${hh}:${mm}:00${APP_TIMEZONE_OFFSET}`;
   };
 
-  const needsNextDay = (startTime, endTime) => {
-    const s = parseTimeString(startTime);
-    const e = parseTimeString(endTime);
-    if (!s || !e) return false;
-    return e <= s;
+  const validateTimeRange = (startTime, endTime) => {
+    if (!startTime || !endTime) return true;
+    const start = new Date(`2000-01-01T${startTime}`);
+    const end = new Date(`2000-01-01T${endTime}`);
+    return end > start;
+  };
+
+  const fetchStoredRoomSlots = async (roomId) => {
+    const token = localStorage.getItem("token");
+
+    const res = await fetch(`${API_BASE_URL}/api/time-slots/room/${roomId}`, {
+      method: "GET",
+      headers: token
+        ? {
+            Authorization: `Bearer ${token}`,
+          }
+        : {},
+    });
+
+    if (!res.ok) {
+      throw new Error("Failed to fetch room slots.");
+    }
+
+    const data = await res.json();
+    return normalizeStoredSlots(data);
   };
 
   const normalizeStoredSlots = (slotList) => {
@@ -362,6 +359,31 @@ export default function RoomAvailability() {
         };
       })
       .filter((slot) => slot.available);
+  };
+
+  const fetchAvailableSlotsByDate = async (roomId, date) => {
+    const token = localStorage.getItem("token");
+
+    const res = await fetch(
+      `${API_BASE_URL}/api/time-slots/${roomId}?date=${encodeURIComponent(
+        date
+      )}`,
+      {
+        method: "GET",
+        headers: token
+          ? {
+              Authorization: `Bearer ${token}`,
+            }
+          : {},
+      }
+    );
+
+    if (!res.ok) {
+      throw new Error("Failed to fetch available slots for selected date.");
+    }
+
+    const data = await res.json();
+    return normalizeAvailableDateSlots(data, date);
   };
 
   const normalizeAvailableDateSlots = (payload, selectedDate) => {
@@ -427,49 +449,43 @@ export default function RoomAvailability() {
       .filter((slot) => slot.available);
   };
 
-  const fetchStoredRoomSlots = async (roomId) => {
-    const token = localStorage.getItem("token");
-
-    const res = await fetch(`${API_BASE_URL}/api/time-slots/room/${roomId}`, {
-      method: "GET",
-      headers: token
-        ? {
-            Authorization: `Bearer ${token}`,
-          }
-        : {},
-    });
-
-    if (!res.ok) {
-      throw new Error("Failed to fetch room slots.");
-    }
-
-    const data = await res.json();
-    return normalizeStoredSlots(data);
+  const addOneDay = (dateStr) => {
+    const d = new Date(`${dateStr}T00:00:00`);
+    d.setDate(d.getDate() + 1);
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(
+      d.getDate()
+    )}`;
   };
 
-  const fetchAvailableSlotsByDate = async (roomId, date) => {
-    const token = localStorage.getItem("token");
+  const needsNextDay = (startTime, endTime) => {
+    const s = parseTimeString(startTime);
+    const e = parseTimeString(endTime);
+    if (!s || !e) return false;
+    return e <= s;
+  };
 
-    const res = await fetch(
-      `${API_BASE_URL}/api/time-slots/${roomId}?date=${encodeURIComponent(
-        date
-      )}`,
-      {
-        method: "GET",
-        headers: token
-          ? {
-              Authorization: `Bearer ${token}`,
-            }
-          : {},
+  const parseTimeString = (timeValue) => {
+    if (!timeValue) return null;
+
+    if (typeof timeValue === "string") {
+      const trimmed = timeValue.trim();
+      const parts = trimmed.split(":");
+      if (parts.length >= 2) {
+        return `${pad2(Number(parts[0]))}:${pad2(Number(parts[1]))}:00`;
       }
-    );
-
-    if (!res.ok) {
-      throw new Error("Failed to fetch available slots for selected date.");
     }
 
-    const data = await res.json();
-    return normalizeAvailableDateSlots(data, date);
+    if (
+      typeof timeValue === "object" &&
+      timeValue.hour !== undefined &&
+      timeValue.minute !== undefined
+    ) {
+      return `${pad2(Number(timeValue.hour))}:${pad2(
+        Number(timeValue.minute)
+      )}:00`;
+    }
+
+    return null;
   };
 
   const isSameDate = (dateTime, selectedDate) => {
@@ -541,8 +557,6 @@ export default function RoomAvailability() {
     }
   };
 
-  // BUG FIX 1 (continued): Removed the nested useEffect that was illegally placed
-  // inside this async function. The hook is now correctly placed at the top level above.
   const loadSlotsForSelectedRoom = async (roomId) => {
     try {
       setSlotLoading(true);
@@ -560,7 +574,7 @@ export default function RoomAvailability() {
         }));
       }
 
-      setSelectedRoomSlots(applyDateTimeFilterToSlots(slotsForRoom, filters.date, filters.time));
+      setSelectedRoomSlots(applyDateTimeFilterToSlots(slotsForRoom, filters.date));
     } catch (err) {
       console.error("Error fetching room slots:", err);
       showError(err.message || "Error fetching room slots.");
@@ -579,7 +593,6 @@ export default function RoomAvailability() {
         [name]: value,
       };
 
-      // If certain filters change, reset room selection & slots
       if (
         name === "district" ||
         name === "location" ||
@@ -593,321 +606,33 @@ export default function RoomAvailability() {
       return updated;
     });
 
-    // BUG FIX 2: `setSelectedWindowId` does not exist. Reset selectedWindowId via
-    // setBookingForm instead. Also moved outside setFilters to avoid side-effects inside updater.
     if (name === "date") {
-      setBookingForm((prev) => ({ ...prev, selectedWindowId: "", startAt: "", endAt: "" }));
       setSelectedRoomSlots([]);
     }
-  };
 
-  const roundUpToNext30Minutes = (date) => {
-    const rounded = new Date(date);
-    rounded.setSeconds(0, 0);
-
-    const minutes = rounded.getMinutes();
-    const remainder = minutes % 30;
-
-    if (remainder !== 0) {
-      rounded.setMinutes(minutes + (30 - remainder));
+    if (name === "startTime" || name === "endTime") {
+      setTimeError("");
     }
-
-    return rounded;
-  };
-
-  const toInputDateTimeValue = (dateTime) => {
-    if (!dateTime) return "";
-    const d = new Date(dateTime);
-    if (Number.isNaN(d.getTime())) return "";
-
-    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(
-      d.getDate()
-    )}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-  };
-
-  const inputValueToIsoWithOffset = (value) => {
-    if (!value) return null;
-    return `${value}:00${APP_TIMEZONE_OFFSET}`;
-  };
-
-  const getMinBookableStartInput = (windowSlot) => {
-    if (!windowSlot?.startAt) return "";
-    const now = roundUpToNext30Minutes(new Date());
-    const slotStart = new Date(windowSlot.startAt);
-    const effective = now > slotStart ? now : slotStart;
-    return toInputDateTimeValue(effective);
-  };
-
-  const getWindowEndInput = (windowSlot) => {
-    return windowSlot?.endAt ? toInputDateTimeValue(windowSlot.endAt) : "";
-  };
-
-  const getWindowStartInput = (windowSlot) => {
-    return windowSlot?.startAt ? toInputDateTimeValue(windowSlot.startAt) : "";
-  };
-
-  const bookingModalSlots = useMemo(() => {
-    const roomId = selectedRoom?.id;
-    if (!roomId) return [];
-
-    const cacheKey = filters.date ? `${roomId}_${filters.date}` : `${roomId}_all`;
-
-    const slotsForRoom = roomSlotsMap[cacheKey] || [];
-    const filteredSlots = applyDateTimeFilterToSlots(slotsForRoom, filters.date, filters.time);
-
-    return filteredSlots.map((slot) => {
-      const fallbackCapacity = Number(
-        selectedRoom?.seatingCapacity ?? selectedRoom?.capacity ?? 1
-      );
-
-      const normalizedRemainingSeats = Number(
-        slot.remainingSeats ??
-          slot.remaining ??
-          slot.availableSeats ??
-          slot.seatsRemaining ??
-          slot.capacityLeft ??
-          fallbackCapacity
-      );
-
-      return {
-        ...slot,
-        remainingSeats:
-          normalizedRemainingSeats > 0 ? normalizedRemainingSeats : fallbackCapacity,
-      };
-    });
-  }, [selectedRoom, roomSlotsMap, filters.date, filters.time]);
-
-  const selectedWindow = useMemo(() => {
-    return (
-      bookingModalSlots.find(
-        (slot) => String(slot.id) === String(bookingForm.selectedWindowId)
-      ) || null
-    );
-  }, [bookingModalSlots, bookingForm.selectedWindowId]);
-
-  const attendeeCountNumber = useMemo(() => {
-    const parsed = Number(bookingForm.attendeeCount);
-    if (Number.isNaN(parsed) || parsed < 1) return 1;
-    return parsed;
-  }, [bookingForm.attendeeCount]);
-
-  const initialRemainingSeats = useMemo(() => {
-    if (!selectedWindow) return null;
-
-    return Number(
-      selectedWindow.remainingSeats ??
-        selectedRoom?.seatingCapacity ??
-        selectedRoom?.capacity ??
-        1
-    );
-  }, [selectedWindow, selectedRoom]);
-
-  const remainingSeatsAfterSelection = useMemo(() => {
-    if (initialRemainingSeats === null) return null;
-    return Math.max(initialRemainingSeats - attendeeCountNumber, 0);
-  }, [initialRemainingSeats, attendeeCountNumber]);
-
-  const selectedCustomRange = useMemo(() => {
-    if (!bookingForm.startAt || !bookingForm.endAt) return null;
-
-    const startIso = inputValueToIsoWithOffset(bookingForm.startAt);
-    const endIso = inputValueToIsoWithOffset(bookingForm.endAt);
-
-    if (!startIso || !endIso) return null;
-
-    return {
-      startAt: startIso,
-      endAt: endIso,
-    };
-  }, [bookingForm.startAt, bookingForm.endAt]);
-
-  const handleBookingInputChange = (e) => {
-    const { name, value } = e.target;
-
-    if (name === "selectedWindowId") {
-      const nextWindow =
-        bookingModalSlots.find((slot) => String(slot.id) === String(value)) ||
-        null;
-
-      if (!nextWindow) {
-        setBookingForm((prev) => ({
-          ...prev,
-          selectedWindowId: "",
-          startAt: "",
-          endAt: "",
-          attendeeCount: "1",
-        }));
-        return;
-      }
-
-      const minStartValue = getMinBookableStartInput(nextWindow);
-      const windowEndValue = getWindowEndInput(nextWindow);
-
-      const maxSeats = Number(
-        nextWindow.remainingSeats ??
-          selectedRoom?.seatingCapacity ??
-          selectedRoom?.capacity ??
-          1
-      );
-
-      setBookingForm((prev) => ({
-        ...prev,
-        selectedWindowId: value,
-        startAt: minStartValue,
-        endAt: windowEndValue,
-        attendeeCount: String(
-          Math.min(
-            Math.max(Number(prev.attendeeCount || 1), 1),
-            Math.max(maxSeats, 1)
-          )
-        ),
-      }));
-      return;
-    }
-
-    if (name === "attendeeCount") {
-      if (value === "") {
-        setBookingForm((prev) => ({
-          ...prev,
-          attendeeCount: "1",
-        }));
-        return;
-      }
-
-      let nextCount = Number(value);
-      if (Number.isNaN(nextCount)) return;
-
-      if (nextCount < 1) nextCount = 1;
-
-      const maxSeats = Number(
-        selectedWindow?.remainingSeats ??
-          selectedRoom?.seatingCapacity ??
-          selectedRoom?.capacity ??
-          1
-      );
-
-      if (maxSeats > 0) {
-        nextCount = Math.min(nextCount, maxSeats);
-      }
-
-      setBookingForm((prev) => ({
-        ...prev,
-        attendeeCount: String(nextCount),
-      }));
-      return;
-    }
-
-    setBookingForm((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
   };
 
   const handleReset = () => {
     setFilters(initialFilters);
     setRooms(allRooms);
     setSelectedRoomSlots([]);
-    setLastBookingDetails(null);
     setRoomFeedbackSummary(null);
     clearAlerts();
-    closeBookingModal();
-  };
-
-  const validateBookingForm = () => {
-    if (!selectedRoom || !selectedRoom.id) {
-      showError("Selected room is invalid.");
-      return false;
-    }
-
-    if (!bookingForm.selectedWindowId) {
-      showError("Please select an available slot window.");
-      return false;
-    }
-
-    if (!selectedWindow) {
-      showError("Selected slot window is invalid.");
-      return false;
-    }
-
-    if (!bookingForm.startAt || !bookingForm.endAt) {
-      showError("Please select booking start and end time.");
-      return false;
-    }
-
-    const bookingStart = new Date(inputValueToIsoWithOffset(bookingForm.startAt));
-    const bookingEnd = new Date(inputValueToIsoWithOffset(bookingForm.endAt));
-    const windowStart = new Date(selectedWindow.startAt);
-    const windowEnd = new Date(selectedWindow.endAt);
-
-    if (
-      Number.isNaN(bookingStart.getTime()) ||
-      Number.isNaN(bookingEnd.getTime()) ||
-      Number.isNaN(windowStart.getTime()) ||
-      Number.isNaN(windowEnd.getTime())
-    ) {
-      showError("Invalid booking date or time.");
-      return false;
-    }
-
-    if (bookingStart >= bookingEnd) {
-      showError("End time must be after start time.");
-      return false;
-    }
-
-    if (bookingStart < windowStart || bookingEnd > windowEnd) {
-      showError("Booking time must be inside the selected available window.");
-      return false;
-    }
-
-    const durationMinutes =
-      (bookingEnd.getTime() - bookingStart.getTime()) / 60000;
-
-    if (durationMinutes <= 0) {
-      showError("Booking duration must be greater than 0.");
-      return false;
-    }
-
-    if (
-      bookingStart.getMinutes() % 30 !== 0 ||
-      bookingEnd.getMinutes() % 30 !== 0
-    ) {
-      showError("Booking time must be in 30-minute steps.");
-      return false;
-    }
-
-    const attendeeCountNum = Number(bookingForm.attendeeCount);
-
-    if (
-      !bookingForm.attendeeCount ||
-      Number.isNaN(attendeeCountNum) ||
-      attendeeCountNum <= 0
-    ) {
-      showError("Attendee count must be greater than 0.");
-      return false;
-    }
-
-    const maxAllowedSeats = Number(
-      selectedWindow?.remainingSeats ??
-        selectedWindow?.remaining ??
-        selectedWindow?.availableSeats ??
-        selectedRoom?.seatingCapacity ??
-        selectedRoom?.capacity ??
-        1
-    );
-
-    if (attendeeCountNum > maxAllowedSeats) {
-      showError(
-        `Attendee count cannot exceed remaining seats (${maxAllowedSeats}).`
-      );
-      return false;
-    }
-
-    return true;
+    closeWaitlistModal();
   };
 
   const handleSearch = async (e) => {
     e.preventDefault();
     clearAlerts();
+
+    // Validate time range
+    if (filters.startTime && filters.endTime && !validateTimeRange(filters.startTime, filters.endTime)) {
+      setTimeError("End time must be after start time");
+      return;
+    }
 
     if (!hasAnyFilter) {
       setRooms(allRooms);
@@ -964,7 +689,7 @@ export default function RoomAvailability() {
       );
     });
 
-    if (!filters.date && !filters.time) {
+    if (!filters.date) {
       setRooms(locallyFilteredRooms);
 
       if (filters.roomId) {
@@ -1026,7 +751,7 @@ export default function RoomAvailability() {
       const matchedByDateTime = slotResults
         .map((item) => ({
           room: item.room,
-          filteredSlots: applyDateTimeFilterToSlots(item.slots, filters.date, filters.time),
+          filteredSlots: applyDateTimeFilterToSlots(item.slots, filters.date),
         }))
         .filter((item) => item.filteredSlots.length > 0);
 
@@ -1041,8 +766,6 @@ export default function RoomAvailability() {
 
         if (selectedMatch) {
           setSelectedRoom(selectedMatch.room);
-          // BUG FIX 3: `slotsForRoom` was undefined in this scope. Use the already-resolved
-          // filteredSlots from matchedByDateTime instead.
           setSelectedRoomSlots(selectedMatch.filteredSlots);
         } else {
           setSelectedRoomSlots([]);
@@ -1062,14 +785,101 @@ export default function RoomAvailability() {
     }
   };
 
-  const openBookingModal = async (room) => {
+  const buildWaitlistSlot = (room, startTime, endTime) => {
+    if (!room?.id || !filters.date || !startTime || !endTime) return null;
+    const startAt = buildDateTimeFromDateAndTime(filters.date, startTime);
+    const endAt = buildDateTimeFromDateAndTime(filters.date, endTime);
+    if (!startAt || !endAt) return null;
+    return { roomId: room.id, startAt, endAt };
+  };
+
+  const canJoinWaitlist = (room) => {
+    if (!room?.id || !filters.date || !filters.startTime || !filters.endTime) return false;
+    if (!validateTimeRange(filters.startTime, filters.endTime)) return false;
+
+    const slot = buildWaitlistSlot(room, filters.startTime, filters.endTime);
+    if (!slot) return false;
+
+    // Check if user is already on waitlist for this slot
+    const alreadyJoined = myWaitlistEntries.some(
+      (e) =>
+        String(e.roomId) === String(room.id) &&
+        e.status !== "CANCELLED" &&
+        e.startAt === slot.startAt
+    );
+
+    return !alreadyJoined;
+  };
+
+  const joinWaitlist = async ({ userId, roomId, startAt, endAt, autoAssign }) => {
+    const token = localStorage.getItem("token");
+    const query = new URLSearchParams({
+      userId: String(userId),
+      roomId: String(roomId),
+      startAt,
+      endAt,
+      autoAssign: String(Boolean(autoAssign)),
+    });
+
+    const res = await fetch(`${WAITLIST_BASE_URL}/join?${query.toString()}`, {
+      method: "POST",
+      headers: token
+        ? {
+            Authorization: `Bearer ${token}`,
+          }
+        : {},
+    });
+
+    const contentType = res.headers.get("content-type") || "";
+    const data = contentType.includes("application/json")
+      ? await res.json()
+      : await res.text();
+
+    if (!res.ok) {
+      const message =
+        (typeof data === "string" && data) ||
+        data?.message ||
+        "Failed to join waitlist";
+      throw new Error(message);
+    }
+
+    return data;
+  };
+
+  const openWaitlistModal = (room) => {
+    clearAlerts();
+    
+    const token = localStorage.getItem("token");
+    if (!token) {
+      showError("Please login first to join waitlist.");
+      return;
+    }
+
+    if (!validateTimeRange(filters.startTime, filters.endTime)) {
+      setTimeError("End time must be after start time");
+      return;
+    }
+
+    setSelectedRoom(room);
+    setSelectedStartTime(filters.startTime);
+    setSelectedEndTime(filters.endTime);
+    setWaitlistModalOpen(true);
+  };
+
+  const closeWaitlistModal = () => {
+    setWaitlistModalOpen(false);
+    setSelectedRoom(null);
+    setRoomFeedbackSummary(null);
+  };
+
+  const handleConfirmJoinWaitlist = async () => {
+    const userId = localStorage.getItem("userId");
+    const token = localStorage.getItem("token");
+
     clearAlerts();
 
-    const token = localStorage.getItem("token");
-    const userId = localStorage.getItem("userId");
-
     if (!token) {
-      showError("Please login first to book a room.");
+      showError("Please login first to join waitlist.");
       return;
     }
 
@@ -1078,47 +888,44 @@ export default function RoomAvailability() {
       return;
     }
 
-    try {
-      setSlotLoading(true);
+    const slot = buildWaitlistSlot(selectedRoom, selectedStartTime, selectedEndTime);
 
-      const cacheKey = filters.date ? `${room.id}_${filters.date}` : `${room.id}_all`;
-
-      let slotList = roomSlotsMap[cacheKey];
-      if (!slotList) {
-        slotList = await fetchRoomSlots(room.id, filters.date);
-        setRoomSlotsMap((prev) => ({
-          ...prev,
-          [cacheKey]: slotList,
-        }));
-      }
-
-      setSelectedRoom(room);
-      setBookingForm(initialBookingForm);
-      setBookingModalOpen(true);
-
-      if (String(filters.roomId) !== String(room.id)) {
-        setFilters((prev) => ({
-          ...prev,
-          roomId: room.id,
-        }));
-      }
-
-      // BUG FIX 3 (continued): `slotsForRoom` was undefined in this scope.
-      // Use the locally-fetched `slotList` variable instead.
-      setSelectedRoomSlots(applyDateTimeFilterToSlots(slotList, filters.date, filters.time));
-    } catch (err) {
-      console.error("Open booking modal slot error:", err);
-      showError(err.message || "Failed to load room slots.");
-    } finally {
-      setSlotLoading(false);
+    if (!slot) {
+      showError("Please select valid start and end times.");
+      return;
     }
-  };
 
-  const closeBookingModal = () => {
-    setBookingModalOpen(false);
-    setSelectedRoom(null);
-    setBookingForm(initialBookingForm);
-    setRoomFeedbackSummary(null);
+    try {
+      setJoiningRoomId(selectedRoom.id);
+
+      const result = await joinWaitlist({
+        userId,
+        roomId: selectedRoom.id,
+        startAt: slot.startAt,
+        endAt: slot.endAt,
+        autoAssign: waitlistAutoAssign,
+      });
+
+      const waitlistPosition =
+        result?.position ??
+        result?.waitlist?.positionNumber ??
+        result?.waitlist?.position ??
+        null;
+
+      showSuccess(
+        waitlistPosition
+          ? `Joined waitlist successfully! Your position is #${waitlistPosition}.`
+          : "Joined waitlist successfully!"
+      );
+
+      closeWaitlistModal();
+      fetchMyWaitlistEntries();
+    } catch (err) {
+      console.error("Join waitlist error:", err);
+      showError(err.message || "Failed to join waitlist.");
+    } finally {
+      setJoiningRoomId(null);
+    }
   };
 
   const formatDateTime = (dateTime) => {
@@ -1151,147 +958,23 @@ export default function RoomAvailability() {
     });
   };
 
-  const formatSlotTimeRange = (slot) => {
-    if (!slot?.startAt || !slot?.endAt) return "Slot time not available";
-    return `${formatTimeOnly(slot.startAt)} - ${formatTimeOnly(slot.endAt)}`;
+  const getRoomTitle = (room) => {
+    if (!room) return "Room";
+    if (room.displayName) return room.displayName;
+    if (room.roomName) return room.roomName;
+    return `${room.blockName || "Block"} - ${room.roomNumber || room.id}`;
   };
 
-  const formatSlotDateLabel = (slot) => {
-    if (!slot?.startAt || !slot?.endAt) return "-";
+  const slotPreview = useMemo(() => {
+    if (!filters.date || !filters.startTime || !filters.endTime) return null;
+    if (!validateTimeRange(filters.startTime, filters.endTime)) return null;
 
-    const startDate = formatDateOnly(slot.startAt);
-    const endDate = formatDateOnly(slot.endAt);
+    const startAt = buildDateTimeFromDateAndTime(filters.date, filters.startTime);
+    const endAt = buildDateTimeFromDateAndTime(filters.date, filters.endTime);
+    if (!startAt || !endAt) return null;
 
-    if (startDate === endDate) {
-      return startDate;
-    }
-
-    return `${startDate} - ${endDate}`;
-  };
-
-  const formatWindowLabel = (slot) => {
-    if (!slot?.startAt || !slot?.endAt) return "Window not available";
-    return `${formatSlotDateLabel(slot)} | ${formatSlotTimeRange(slot)}`;
-  };
-
-  const handleConfirmBooking = async () => {
-    const token = localStorage.getItem("token");
-    const userId = localStorage.getItem("userId");
-
-    clearAlerts();
-
-    if (!token) {
-      showError("Please login first to book a room.");
-      return;
-    }
-
-    if (!userId) {
-      showError("User ID not found. Please login again.");
-      return;
-    }
-
-    if (!validateBookingForm()) return;
-
-    try {
-      setBookingRoomId(selectedRoom.id);
-
-      const bookingStartIso = inputValueToIsoWithOffset(bookingForm.startAt);
-      const bookingEndIso = inputValueToIsoWithOffset(bookingForm.endAt);
-
-      const attendeeCount = Number(bookingForm.attendeeCount || 1);
-
-      const bookingData = {
-        roomId: selectedRoom.id,
-        userId,
-        timeSlotId: isUuid(bookingForm.selectedWindowId)
-          ? bookingForm.selectedWindowId
-          : null,
-        startAt: bookingStartIso,
-        endAt: bookingEndIso,
-        purpose: bookingForm.purpose?.trim() || null,
-        attendeeCount,
-      };
-
-      await bookRoom(bookingData);
-
-      // BUG FIX 4: `refreshCacheKey` was used before it was declared. Declare it first.
-      const refreshCacheKey = filters.date
-        ? `${selectedRoom.id}_${filters.date}`
-        : `${selectedRoom.id}_all`;
-
-      const refreshedSlots = await fetchRoomSlots(selectedRoom.id, filters.date);
-
-      setRoomSlotsMap((prev) => ({
-        ...prev,
-        [refreshCacheKey]: refreshedSlots,
-      }));
-
-      const refreshedFilteredSlots = applyDateTimeFilterToSlots(
-        refreshedSlots,
-        filters.date,
-        filters.time
-      );
-      setSelectedRoomSlots(refreshedFilteredSlots);
-
-      const start = new Date(bookingStartIso);
-      const end = new Date(bookingEndIso);
-      const durationMs = end.getTime() - start.getTime();
-      const durationHours = durationMs > 0 ? durationMs / (1000 * 60 * 60) : 0;
-
-      const feePerHour = Number(selectedRoom.feePerHour || 0);
-      const totalFee = durationHours * feePerHour * attendeeCount;
-
-      const initialSeatCount = Number(
-        selectedWindow?.remainingSeats ??
-          selectedWindow?.remaining ??
-          selectedWindow?.availableSeats ??
-          selectedRoom?.seatingCapacity ??
-          selectedRoom?.capacity ??
-          1
-      );
-
-      setLastBookingDetails({
-        roomName: getRoomTitle(selectedRoom),
-        district: selectedRoom.district || "-",
-        location: selectedRoom.location || "-",
-        facilities: selectedRoom.facilities || "-",
-        capacity: selectedRoom.seatingCapacity || "-",
-        slotDate: formatDateOnly(bookingStartIso),
-        startAt: formatDateTime(bookingStartIso),
-        endAt: formatDateTime(bookingEndIso),
-        timeRange: `${formatTimeOnly(bookingStartIso)} - ${formatTimeOnly(
-          bookingEndIso
-        )}`,
-        attendeeCount,
-        purpose: bookingForm.purpose?.trim() || "-",
-        durationHours,
-        totalFee,
-        remainingSeatsAfter:
-          initialSeatCount >= 0
-            ? Math.max(initialSeatCount - attendeeCount, 0)
-            : "-",
-        status:
-          selectedRoom.approvalRequired === true ? "Pending Approval" : "Booked",
-        selectedWindow: selectedWindow ? formatWindowLabel(selectedWindow) : "-",
-      });
-
-      closeBookingModal();
-      showSuccess("Room booked successfully.");
-    } catch (err) {
-      console.error("Booking error:", err);
-
-      if (
-        err?.message?.toLowerCase().includes("unauthorized") ||
-        err?.message?.includes("401")
-      ) {
-        showError("Unauthorized. Please login again.");
-      } else {
-        showError(err.message || "Failed to book room.");
-      }
-    } finally {
-      setBookingRoomId(null);
-    }
-  };
+    return { startAt, endAt };
+  }, [filters.date, filters.startTime, filters.endTime]);
 
   const normalizeImagePath = (url) => {
     if (!url || typeof url !== "string") return "";
@@ -1362,13 +1045,6 @@ export default function RoomAvailability() {
   const getPrimaryImage = (room) => {
     const images = extractRoomImages(room);
     return images.length > 0 ? images[0] : null;
-  };
-
-  const getRoomTitle = (room) => {
-    if (!room) return "Room";
-    if (room.displayName) return room.displayName;
-    if (room.roomName) return room.roomName;
-    return `${room.blockName || "Block"} - ${room.roomNumber || room.id}`;
   };
 
   const openGallery = (room, startIndex = 0) => {
@@ -1464,159 +1140,15 @@ export default function RoomAvailability() {
     }
   };
 
-  const bookingSummary = useMemo(() => {
-    if (!selectedRoom || !selectedCustomRange) {
-      return {
-        durationHours: 0,
-        totalFee: 0,
-      };
-    }
-
-    const start = new Date(selectedCustomRange.startAt);
-    const end = new Date(selectedCustomRange.endAt);
-
-    const durationMs = end.getTime() - start.getTime();
-    const durationHours = durationMs > 0 ? durationMs / (1000 * 60 * 60) : 0;
-
-    const feePerHour = Number(selectedRoom.feePerHour || 0);
-    const totalFee = durationHours * feePerHour * attendeeCountNumber;
-
-    return {
-      durationHours,
-      totalFee,
-    };
-  }, [selectedRoom, selectedCustomRange, attendeeCountNumber]);
-
-  // BUG FIX 5: `buildWaitlistSlot` used `endDate` and `endAt` before they were declared,
-  // and the variable declarations were in the wrong order. Reordered to declare `startAt`
-  // first, then derive `startDate` and `endDate` from it correctly.
-  const buildWaitlistSlot = (room) => {
-    if (!room?.id) return null;
-    if (!filters.date || !filters.time) return null;
-
-    const startAt = buildDateTimeFromDateAndTime(filters.date, filters.time);
-    if (!startAt) return null;
-
-    const startDate = new Date(startAt);
-    if (Number.isNaN(startDate.getTime())) return null;
-
-    const endDate = new Date(startDate.getTime() + BOOKING_STEP_SECONDS * 1000);
-
-    const endAt = `${endDate.getFullYear()}-${pad2(endDate.getMonth() + 1)}-${pad2(
-      endDate.getDate()
-    )}T${pad2(endDate.getHours())}:${pad2(endDate.getMinutes())}:00${APP_TIMEZONE_OFFSET}`;
-
-    return {
-      roomId: room.id,
-      startAt,
-      endAt,
-    };
-  };
-
-  const canJoinWaitlist = (room, roomFilteredSlots) => {
-    if (!room?.id || !filters.date) return false;
-    if (roomFilteredSlots.length > 0) return false;
-    return Boolean(buildWaitlistSlot(room));
-  };
-
-  const joinWaitlist = async ({ userId, roomId, startAt, endAt, autoAssign }) => {
-    const token = localStorage.getItem("token");
-    const query = new URLSearchParams({
-      userId: String(userId),
-      roomId: String(roomId),
-      startAt,
-      endAt,
-      autoAssign: String(Boolean(autoAssign)),
-    });
-
-    const res = await fetch(`${WAITLIST_BASE_URL}/join?${query.toString()}`, {
-      method: "POST",
-      headers: token
-        ? {
-            Authorization: `Bearer ${token}`,
-          }
-        : {},
-    });
-
-    const contentType = res.headers.get("content-type") || "";
-    const data = contentType.includes("application/json")
-      ? await res.json()
-      : await res.text();
-
-    if (!res.ok) {
-      const message =
-        (typeof data === "string" && data) ||
-        data?.message ||
-        "Failed to join waitlist";
-      throw new Error(message);
-    }
-
-    return data;
-  };
-
-  const handleJoinWaitlist = async (room) => {
-    clearAlerts();
-
-    const userId = localStorage.getItem("userId");
-    const token = localStorage.getItem("token");
-
-    if (!token) {
-      showError("Please login first to join waitlist.");
-      return;
-    }
-
-    if (!userId) {
-      showError("User ID not found. Please login again.");
-      return;
-    }
-
-    const slot = buildWaitlistSlot(room);
-
-    if (!slot) {
-      showError("Select both date and time to join the waitlist.");
-      return;
-    }
-
-    try {
-      setWaitlistRoomId(room.id);
-
-      const result = await joinWaitlist({
-        userId,
-        roomId: room.id,
-        startAt: slot.startAt,
-        endAt: slot.endAt,
-        autoAssign: waitlistAutoAssign,
-      });
-
-      const waitlistPosition =
-        result?.position ??
-        result?.waitlist?.positionNumber ??
-        result?.waitlist?.position ??
-        null;
-
-      showSuccess(
-        waitlistPosition
-          ? `Joined waitlist successfully. Your position is ${waitlistPosition}.`
-          : "Joined waitlist successfully."
-      );
-    } catch (err) {
-      console.error("Join waitlist error:", err);
-      showError(err.message || "Failed to join waitlist.");
-    } finally {
-      setWaitlistRoomId(null);
-    }
-  };
-
   return (
     <div className="room-page">
       <div className="room-container">
         <div className="room-topBar">
           <div>
-            <h1 className="room-heading">Room Slot Booking</h1>
+            <h1 className="room-heading">Join Waitlist</h1>
             <p className="room-subText">
-              Filter by district, location, date, time, price, and facilities.
-              If one field is filled, matching rooms are shown. If multiple
-              fields are filled, only rooms matching all filled fields are shown.
+              Select date and time range to join waitlist for fully booked rooms.
+              You'll be notified when a slot becomes available.
             </p>
           </div>
 
@@ -1631,78 +1163,37 @@ export default function RoomAvailability() {
 
         {message && <div className="room-successBox">{message}</div>}
         {error && <div className="room-errorBox">{error}</div>}
+        {timeError && <div className="room-errorBox">{timeError}</div>}
 
-        {lastBookingDetails && (
+        {/* My Waitlist Entries Section */}
+        {myWaitlistEntries.length > 0 && (
           <div className="room-formCard" style={{ marginBottom: "20px" }}>
             <div className="room-formHeader">
-              <h2 className="room-formTitle">Last Booking Details</h2>
+              <h2 className="room-formTitle">My Waitlist Entries</h2>
               <p className="room-formSubtitle">
-                Full booking information including selected slot and room details.
+                You will be notified when a slot becomes available.
               </p>
             </div>
 
             <div className="room-infoList">
-              <p>
-                <strong>Room:</strong> {lastBookingDetails.roomName}
-              </p>
-              <p>
-                <strong>District:</strong> {lastBookingDetails.district}
-              </p>
-              <p>
-                <strong>Location:</strong> {lastBookingDetails.location}
-              </p>
-              <p>
-                <strong>Facilities:</strong> {lastBookingDetails.facilities}
-              </p>
-              <p>
-                <strong>Capacity:</strong> {lastBookingDetails.capacity}
-              </p>
-              <p>
-                <strong>Selected Window:</strong> {lastBookingDetails.selectedWindow}
-              </p>
-              <p>
-                <strong>Date:</strong> {lastBookingDetails.slotDate}
-              </p>
-              <p>
-                <strong>Start:</strong> {lastBookingDetails.startAt}
-              </p>
-              <p>
-                <strong>End:</strong> {lastBookingDetails.endAt}
-              </p>
-              <p>
-                <strong>Time Range:</strong> {lastBookingDetails.timeRange}
-              </p>
-              <p>
-                <strong>Attendee Count:</strong> {lastBookingDetails.attendeeCount}
-              </p>
-              <p>
-                <strong>Purpose:</strong> {lastBookingDetails.purpose}
-              </p>
-              <p>
-                <strong>Duration:</strong> {lastBookingDetails.durationHours} hour(s)
-              </p>
-              <p>
-                <strong>Total Fee:</strong> ₹
-                {Number(lastBookingDetails.totalFee || 0).toFixed(2)}
-              </p>
-              <p>
-                <strong>Status:</strong> {lastBookingDetails.status}
-              </p>
-              <p>
-                <strong>Remaining Seats After Booking:</strong>{" "}
-                {lastBookingDetails.remainingSeatsAfter}
-              </p>
+              {myWaitlistEntries.map((entry) => (
+                <div key={entry.id} style={{ marginBottom: "15px", padding: "10px", borderBottom: "1px solid #e2e8f0" }}>
+                  <p><strong>Room:</strong> {entry.roomName || entry.roomId}</p>
+                  <p><strong>Date:</strong> {formatDateOnly(entry.startAt)}</p>
+                  <p><strong>Time:</strong> {formatTimeOnly(entry.startAt)} - {formatTimeOnly(entry.endAt)}</p>
+                  <p><strong>Position:</strong> #{entry.positionNumber ?? entry.position ?? "-"}</p>
+                  <p><strong>Status:</strong> <span style={{ color: entry.status === "ASSIGNED" ? "#10b981" : "#f59e0b" }}>{entry.status || "PENDING"}</span></p>
+                </div>
+              ))}
             </div>
           </div>
         )}
 
         <form onSubmit={handleSearch} className="room-formCard">
           <div className="room-formHeader">
-            <h2 className="room-formTitle">Search Study Rooms</h2>
+            <h2 className="room-formTitle">Find Rooms for Waitlist</h2>
             <p className="room-formSubtitle">
-              Fill any one or more filters to search rooms and view available
-              slot windows for the selected day. If no slot is available for the
-              selected date and time, you can join the waitlist.
+              Select date and time range to join waitlist for rooms that are fully booked.
             </p>
           </div>
 
@@ -1737,24 +1228,40 @@ export default function RoomAvailability() {
             </div>
 
             <div className="room-fieldGroup">
-              <label className="room-label">Date</label>
+              <label className="room-label">Date *</label>
               <input
                 type="date"
                 name="date"
                 value={filters.date}
                 onChange={handleChange}
                 className="room-input"
+                required
               />
             </div>
 
             <div className="room-fieldGroup">
-              <label className="room-label">Time</label>
+              <label className="room-label">Start Time *</label>
               <input
                 type="time"
-                name="time"
-                value={filters.time}
+                name="startTime"
+                value={filters.startTime}
                 onChange={handleChange}
                 className="room-input"
+                required
+                step="1800"
+              />
+            </div>
+
+            <div className="room-fieldGroup">
+              <label className="room-label">End Time *</label>
+              <input
+                type="time"
+                name="endTime"
+                value={filters.endTime}
+                onChange={handleChange}
+                className="room-input"
+                required
+                step="1800"
               />
             </div>
 
@@ -1801,17 +1308,13 @@ export default function RoomAvailability() {
             </div>
 
             <div className="room-fieldGroup">
-              <label className="room-label">Available Slot Windows</label>
+              <label className="room-label">Waitlist Slot Preview</label>
               <input
                 type="text"
                 value={
-                  filters.roomId
-                    ? slotLoading
-                      ? "Loading windows..."
-                      : `${selectedRoomSlots.length} window(s) available`
-                    : filters.date || filters.time
-                    ? "Search to view date/time based windows"
-                    : "Select room to view windows"
+                  slotPreview
+                    ? `${formatDateTime(slotPreview.startAt)} → ${formatDateTime(slotPreview.endAt)}`
+                    : timeError || "Select date & time range to preview"
                 }
                 className="room-input"
                 disabled
@@ -1820,7 +1323,7 @@ export default function RoomAvailability() {
 
             <div className="room-fieldGroup room-fullWidth">
               <label className="room-label">
-                Auto Assign Waitlist Booking
+                Auto Assign When Available
               </label>
               <div
                 style={{
@@ -1838,13 +1341,13 @@ export default function RoomAvailability() {
                   type="checkbox"
                   checked={waitlistAutoAssign}
                   onChange={(e) => setWaitlistAutoAssign(e.target.checked)}
-                  disabled={waitlistRoomId !== null}
+                  disabled={joiningRoomId !== null}
                 />
                 <label
                   htmlFor="waitlistAutoAssign"
                   style={{ margin: 0, cursor: "pointer" }}
                 >
-                  Automatically assign booking when slot becomes available
+                  Automatically book when slot becomes available
                 </label>
               </div>
             </div>
@@ -1867,8 +1370,7 @@ export default function RoomAvailability() {
                 loading ||
                 slotLoading ||
                 searchingAvailability ||
-                bookingRoomId !== null ||
-                waitlistRoomId !== null
+                joiningRoomId !== null
               }
             >
               Reset
@@ -1893,17 +1395,22 @@ export default function RoomAvailability() {
               const images = extractRoomImages(room);
               const primaryImage = getPrimaryImage(room);
               const isSelected = String(filters.roomId) === String(room.id);
+              const canJoin = canJoinWaitlist(room);
+              const isJoining = joiningRoomId === room.id;
 
               const cacheKey = filters.date ? `${room.id}_${filters.date}` : `${room.id}_all`;
-
-              // BUG FIX 6: `allSlotsForRoom` was undefined. Look up the correct slots
-              // from the cache using `cacheKey`, then apply filters for non-selected rooms.
               const cachedSlots = roomSlotsMap[cacheKey] || [];
               const roomFilteredSlots = isSelected
                 ? selectedRoomSlots
-                : applyDateTimeFilterToSlots(cachedSlots, filters.date, filters.time);
+                : applyDateTimeFilterToSlots(cachedSlots, filters.date);
 
-              const showWaitlistButton = canJoinWaitlist(room, roomFilteredSlots);
+              // Check if already on waitlist for this slot
+              const slot = buildWaitlistSlot(room, filters.startTime, filters.endTime);
+              const alreadyOnWaitlist = slot && myWaitlistEntries.some(
+                (e) => String(e.roomId) === String(room.id) &&
+                  e.status !== "CANCELLED" &&
+                  e.startAt === slot.startAt
+              );
 
               return (
                 <div key={room.id} className="room-card">
@@ -1976,71 +1483,23 @@ export default function RoomAvailability() {
                       <strong>Selected Date:</strong> {filters.date || "-"}
                     </p>
                     <p>
-                      <strong>Selected Time:</strong> {filters.time || "-"}
-                    </p>
-                    <p>
-                      <strong>Available Windows:</strong> {roomFilteredSlots.length}
+                      <strong>Time Range:</strong> {filters.startTime || "-"} - {filters.endTime || "-"}
                     </p>
                   </div>
 
-                  {isSelected && (
+                  {alreadyOnWaitlist && (
                     <div
-                      className="room-infoList"
                       style={{
                         marginTop: "10px",
-                        padding: "12px",
-                        background: "#f8fafc",
-                        borderRadius: "12px",
-                        border: "1px solid #e2e8f0",
+                        padding: "8px 12px",
+                        background: "#fef9c3",
+                        borderRadius: "8px",
+                        fontSize: "13px",
+                        color: "#854d0e",
+                        fontWeight: 500,
                       }}
                     >
-                      <p style={{ marginBottom: "8px" }}>
-                        <strong>
-                          {filters.date
-                            ? "Available Windows For Selected Day:"
-                            : "Available Windows:"}
-                        </strong>
-                      </p>
-
-                      {slotLoading ? (
-                        <p>Loading windows...</p>
-                      ) : roomFilteredSlots.length === 0 ? (
-                        <>
-                          <p>No active slot windows available for the selected filter.</p>
-                          {showWaitlistButton && (
-                            <p style={{ color: "#6b7280", marginTop: "8px" }}>
-                              You can join the waitlist for the selected date and time.
-                            </p>
-                          )}
-                        </>
-                      ) : (
-                        roomFilteredSlots.map((slot, index) => (
-                          <p
-                            key={`${slot.startAt}-${slot.endAt}-${index}`}
-                            style={{
-                              margin: "6px 0",
-                              cursor: "pointer",
-                              backgroundColor:
-                                selectedWindow?.startAt === slot.startAt
-                                  ? "#e0f2fe"
-                                  : "transparent",
-                              padding: "4px 8px",
-                              borderRadius: "6px",
-                            }}
-                            onClick={() =>
-                              setBookingForm({
-                                ...bookingForm,
-                                selectedWindowId: slot.id,
-                                startAt: slot.startAt,
-                                endAt: slot.endAt,
-                              })
-                            }
-                          >
-                            {formatWindowLabel(slot)} | Remaining:{" "}
-                            {slot.remainingSeats ?? "-"}
-                          </p>
-                        ))
-                      )}
+                      ✓ You are already on the waitlist for this slot.
                     </div>
                   )}
 
@@ -2054,27 +1513,28 @@ export default function RoomAvailability() {
                       View Images
                     </button>
 
-                    <button
-                      type="button"
-                      className="room-bookButton"
-                      onClick={() => openBookingModal(room)}
-                      disabled={bookingRoomId === room.id}
-                    >
-                      {bookingRoomId === room.id ? "Booking..." : "Book Now"}
-                    </button>
-
-                    {showWaitlistButton && (
+                    {canJoin && !alreadyOnWaitlist ? (
                       <button
                         type="button"
                         className="room-bookButton"
                         style={{ backgroundColor: "#6f42c1" }}
-                        onClick={() => handleJoinWaitlist(room)}
-                        disabled={waitlistRoomId === room.id}
+                        onClick={() => openWaitlistModal(room)}
+                        disabled={isJoining}
                       >
-                        {waitlistRoomId === room.id
-                          ? "Joining..."
-                          : "Join Waitlist"}
+                        {isJoining ? "Joining..." : "Join Waitlist"}
                       </button>
+                    ) : (!filters.date || !filters.startTime || !filters.endTime) ? (
+                      <span style={{ fontSize: "12px", color: "#94a3b8", paddingTop: "6px" }}>
+                        Select date & time range
+                      </span>
+                    ) : alreadyOnWaitlist ? (
+                      <span style={{ fontSize: "12px", color: "#15803d", paddingTop: "6px" }}>
+                        Already in waitlist
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: "12px", color: "#94a3b8", paddingTop: "6px" }}>
+                        Slot has availability
+                      </span>
                     )}
                   </div>
                 </div>
@@ -2084,17 +1544,18 @@ export default function RoomAvailability() {
         )}
       </div>
 
-      {bookingModalOpen && selectedRoom && (
-        <div className="room-modalOverlay" onClick={closeBookingModal}>
+      {/* Waitlist Confirmation Modal */}
+      {waitlistModalOpen && selectedRoom && (
+        <div className="room-modalOverlay" onClick={closeWaitlistModal}>
           <div
             className="room-modalContent"
             onClick={(e) => e.stopPropagation()}
           >
-            <button className="room-modalClose" onClick={closeBookingModal}>
+            <button className="room-modalClose" onClick={closeWaitlistModal}>
               ×
             </button>
 
-            <h3 className="room-modalTitle">Confirm Room Booking</h3>
+            <h3 className="room-modalTitle">Confirm Waitlist Join</h3>
 
             <div className="room-infoList" style={{ marginBottom: "16px" }}>
               <p>
@@ -2113,10 +1574,10 @@ export default function RoomAvailability() {
                 <strong>Capacity:</strong> {selectedRoom.seatingCapacity || "-"} seats
               </p>
               <p>
-                <strong>Selected Date Filter:</strong> {filters.date || "-"}
+                <strong>Selected Date:</strong> {filters.date || "-"}
               </p>
               <p>
-                <strong>Selected Time Filter:</strong> {filters.time || "-"}
+                <strong>Time Range:</strong> {selectedStartTime} - {selectedEndTime}
               </p>
               <p>
                 <strong>Approval Required:</strong>{" "}
@@ -2139,150 +1600,40 @@ export default function RoomAvailability() {
               <FeedbackList summary={roomFeedbackSummary} />
             </div>
 
-            <div className="room-formGrid">
-              <div className="room-fieldGroup room-fullWidth">
-                <label className="room-label">Select Available Window</label>
-                <select
-                  name="selectedWindowId"
-                  value={bookingForm.selectedWindowId}
-                  onChange={handleBookingInputChange}
-                  className="room-input"
+            <div className="room-fieldGroup">
+              <label className="room-label">Auto-Assign</label>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  padding: "10px 12px",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "10px",
+                  background: "#fff",
+                  marginBottom: "20px",
+                }}
+              >
+                <input
+                  id="modalAutoAssign"
+                  type="checkbox"
+                  checked={waitlistAutoAssign}
+                  onChange={(e) => setWaitlistAutoAssign(e.target.checked)}
+                />
+                <label
+                  htmlFor="modalAutoAssign"
+                  style={{ margin: 0, cursor: "pointer", fontSize: "14px" }}
                 >
-                  <option value="">Select Window</option>
-                  {bookingModalSlots.map((slot) => (
-                    <option key={slot.id} value={slot.id}>
-                      {formatWindowLabel(slot)} | Remaining: {slot.remainingSeats ?? "-"}
-                    </option>
-                  ))}
-                </select>
+                  Automatically book when slot becomes available
+                </label>
               </div>
-
-              <div className="room-fieldGroup">
-                <label className="room-label">Booking Start</label>
-                <input
-                  type="datetime-local"
-                  name="startAt"
-                  step={BOOKING_STEP_SECONDS}
-                  min={selectedWindow ? getMinBookableStartInput(selectedWindow) : ""}
-                  max={selectedWindow ? getWindowEndInput(selectedWindow) : ""}
-                  value={bookingForm.startAt}
-                  onChange={handleBookingInputChange}
-                  className="room-input"
-                  disabled={!selectedWindow}
-                />
-              </div>
-
-              <div className="room-fieldGroup">
-                <label className="room-label">Booking End</label>
-                <input
-                  type="datetime-local"
-                  name="endAt"
-                  step={BOOKING_STEP_SECONDS}
-                  min={
-                    bookingForm.startAt ||
-                    (selectedWindow ? getWindowStartInput(selectedWindow) : "")
-                  }
-                  max={selectedWindow ? getWindowEndInput(selectedWindow) : ""}
-                  value={bookingForm.endAt}
-                  onChange={handleBookingInputChange}
-                  className="room-input"
-                  disabled={!selectedWindow}
-                />
-              </div>
-
-              <div className="room-fieldGroup">
-                <label className="room-label">Attendee Count</label>
-                <input
-                  type="number"
-                  name="attendeeCount"
-                  min="1"
-                  max={initialRemainingSeats || undefined}
-                  value={bookingForm.attendeeCount || "1"}
-                  onChange={handleBookingInputChange}
-                  className="room-input"
-                  disabled={!selectedWindow}
-                />
-              </div>
-
-              <div className="room-fieldGroup">
-                <label className="room-label">Remaining Seats</label>
-                <input
-                  type="text"
-                  value={
-                    selectedWindow
-                      ? String(
-                          remainingSeatsAfterSelection ??
-                            initialRemainingSeats ??
-                            "-"
-                        )
-                      : "Select window first"
-                  }
-                  className="room-input"
-                  disabled
-                />
-              </div>
-
-              <div className="room-fieldGroup room-fullWidth">
-                <label className="room-label">Purpose</label>
-                <textarea
-                  name="purpose"
-                  rows="3"
-                  placeholder="Enter booking purpose"
-                  value={bookingForm.purpose}
-                  onChange={handleBookingInputChange}
-                  className="room-textarea"
-                />
-              </div>
-            </div>
-
-            <div className="room-infoList" style={{ marginTop: "16px" }}>
-              <p>
-                <strong>Selected Window:</strong>{" "}
-                {selectedWindow ? formatWindowLabel(selectedWindow) : "-"}
-              </p>
-              <p>
-                <strong>Booking Start:</strong>{" "}
-                {selectedCustomRange
-                  ? formatDateTime(selectedCustomRange.startAt)
-                  : "-"}
-              </p>
-              <p>
-                <strong>Booking End:</strong>{" "}
-                {selectedCustomRange
-                  ? formatDateTime(selectedCustomRange.endAt)
-                  : "-"}
-              </p>
-              <p>
-                <strong>Time Range:</strong>{" "}
-                {selectedCustomRange
-                  ? `${formatTimeOnly(selectedCustomRange.startAt)} - ${formatTimeOnly(
-                      selectedCustomRange.endAt
-                    )}`
-                  : "-"}
-              </p>
-              <p>
-                <strong>Attendee Count:</strong> {attendeeCountNumber}
-              </p>
-              <p>
-                <strong>Duration:</strong>{" "}
-                {Number.isFinite(bookingSummary.durationHours)
-                  ? bookingSummary.durationHours
-                  : 0}{" "}
-                hour(s)
-              </p>
-              <p>
-                <strong>Total Fee:</strong> ₹
-                {Number.isFinite(bookingSummary.totalFee)
-                  ? bookingSummary.totalFee.toFixed(2)
-                  : "0.00"}
-              </p>
             </div>
 
             <div className="room-cardButtons" style={{ marginTop: "18px" }}>
               <button
                 type="button"
                 className="room-viewButton"
-                onClick={closeBookingModal}
+                onClick={closeWaitlistModal}
               >
                 Cancel
               </button>
@@ -2290,21 +1641,20 @@ export default function RoomAvailability() {
               <button
                 type="button"
                 className="room-bookButton"
-                onClick={handleConfirmBooking}
-                disabled={
-                  bookingRoomId === selectedRoom.id ||
-                  bookingModalSlots.length === 0
-                }
+                style={{ backgroundColor: "#6f42c1" }}
+                onClick={handleConfirmJoinWaitlist}
+                disabled={joiningRoomId === selectedRoom.id}
               >
-                {bookingRoomId === selectedRoom.id
-                  ? "Booking..."
-                  : "Confirm Booking"}
+                {joiningRoomId === selectedRoom.id
+                  ? "Joining..."
+                  : "Confirm & Join Waitlist"}
               </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* Gallery Modal */}
       {galleryOpen && (
         <div className="room-modalOverlay" onClick={closeGallery}>
           <div

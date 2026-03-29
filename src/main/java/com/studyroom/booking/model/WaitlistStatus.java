@@ -1,5 +1,9 @@
 package com.studyroom.booking.model;
 
-public class WaitlistStatus {
-    
+public enum WaitlistStatus {
+    WAITING,
+    NOTIFIED,
+    ASSIGNED,
+    EXPIRED,
+    CANCELLED
 }

@@ -4,6 +4,7 @@ import com.studyroom.booking.model.Booking;
 import com.studyroom.booking.model.Notification;
 import com.studyroom.booking.model.NotificationType;
 import com.studyroom.booking.model.User;
+import com.studyroom.booking.model.Waitlist;
 import com.studyroom.booking.repository.NotificationRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -212,6 +213,28 @@ public class NotificationService {
         return roomNumber;
     }
 
+    private String getRoomDisplayName(Waitlist waitlist) {
+        if (waitlist == null || waitlist.getRoom() == null) {
+            return "N/A";
+        }
+
+        if (waitlist.getRoom().getDisplayName() != null &&
+                !waitlist.getRoom().getDisplayName().isBlank()) {
+            return waitlist.getRoom().getDisplayName();
+        }
+
+        String roomNumber = waitlist.getRoom().getRoomNumber() != null
+                ? waitlist.getRoom().getRoomNumber()
+                : "N/A";
+
+        String blockName = waitlist.getRoom().getBlockName();
+        if (blockName != null && !blockName.isBlank()) {
+            return blockName + " - " + roomNumber;
+        }
+
+        return roomNumber;
+    }
+
     private String getUserDisplayName(User user) {
         if (user == null || user.getName() == null || user.getName().isBlank()) {
             return "User";
@@ -227,6 +250,8 @@ public class NotificationService {
         String endAtText = "N/A";
         String attendeeText = "N/A";
         String purposeText = "N/A";
+        String checkInDeadlineText = "N/A";
+        String bookingStatusText = "N/A";
 
         if (booking != null) {
             roomName = getRoomDisplayName(booking);
@@ -253,6 +278,14 @@ public class NotificationService {
             if (booking.getPurpose() != null && !booking.getPurpose().isBlank()) {
                 purposeText = booking.getPurpose();
             }
+
+            if (booking.getCheckInDeadline() != null) {
+                checkInDeadlineText = formatDateTime(booking.getCheckInDeadline());
+            }
+
+            if (booking.getStatus() != null) {
+                bookingStatusText = booking.getStatus().getValue();
+            }
         }
 
         return prefix
@@ -261,8 +294,66 @@ public class NotificationService {
                 + "\nTime: " + timeRange
                 + "\nStart: " + startAtText
                 + "\nEnd: " + endAtText
+                + "\nCheck-in Deadline: " + checkInDeadlineText
                 + "\nAttendees: " + attendeeText
-                + "\nPurpose: " + purposeText;
+                + "\nPurpose: " + purposeText
+                + "\nStatus: " + bookingStatusText;
+    }
+
+    public String buildWaitlistMessage(String prefix, Waitlist waitlist) {
+        String roomName = "N/A";
+        String bookingDate = "N/A";
+        String timeRange = "N/A";
+        String startAtText = "N/A";
+        String endAtText = "N/A";
+        String positionText = "N/A";
+        String autoAssignText = "No";
+        String expiresAtText = "N/A";
+        String statusText = "N/A";
+
+        if (waitlist != null) {
+            roomName = getRoomDisplayName(waitlist);
+
+            if (waitlist.getStartAt() != null) {
+                bookingDate = formatDate(waitlist.getStartAt());
+                startAtText = formatDateTime(waitlist.getStartAt());
+            }
+
+            if (waitlist.getEndAt() != null) {
+                endAtText = formatDateTime(waitlist.getEndAt());
+            }
+
+            if (waitlist.getStartAt() != null && waitlist.getEndAt() != null) {
+                timeRange = formatTime(waitlist.getStartAt())
+                        + " - "
+                        + formatTime(waitlist.getEndAt());
+            }
+
+            if (waitlist.getPositionNumber() != null) {
+                positionText = String.valueOf(waitlist.getPositionNumber());
+            }
+
+            autoAssignText = Boolean.TRUE.equals(waitlist.getAutoAssign()) ? "Yes" : "No";
+
+            if (waitlist.getExpiresAt() != null) {
+                expiresAtText = formatDateTime(waitlist.getExpiresAt());
+            }
+
+            if (waitlist.getStatus() != null) {
+                statusText = waitlist.getStatus().name();
+            }
+        }
+
+        return prefix
+                + "\nRoom: " + roomName
+                + "\nDate: " + bookingDate
+                + "\nTime: " + timeRange
+                + "\nStart: " + startAtText
+                + "\nEnd: " + endAtText
+                + "\nWaitlist Position: " + positionText
+                + "\nAuto Assign: " + autoAssignText
+                + "\nResponse Deadline: " + expiresAtText
+                + "\nStatus: " + statusText;
     }
 
     private String buildEmailBody(User user, String title, String message) {
@@ -384,23 +475,146 @@ public class NotificationService {
         );
     }
 
-    public void sendWaitlistAvailableNotification(User user, Booking booking) {
-        if (user == null) {
+    public void sendAutoCancelledNotification(Booking booking) {
+        if (booking == null || booking.getUser() == null) {
             return;
         }
 
-        String title = "Waitlist Slot Available";
+        String title = "Booking Auto-Cancelled";
+        String prefix = "Your booking was auto-cancelled because check-in was not completed within the allowed time.";
+
+        if (booking.getCancellationReason() != null && !booking.getCancellationReason().isBlank()) {
+            prefix += "\nReason: " + booking.getCancellationReason();
+        }
+
+        String message = buildBookingMessage(prefix, booking);
+
+        sendInAppAndEmail(
+                booking.getUser(),
+                NotificationType.BOOKING_AUTO_CANCELLED,
+                title,
+                message,
+                booking.getId()
+        );
+    }
+
+    public void sendCheckInSuccessNotification(Booking booking) {
+        if (booking == null || booking.getUser() == null) {
+            return;
+        }
+
+        String title = "Check-In Successful";
         String message = buildBookingMessage(
-                "A slot has become available for booking.",
+                "You have successfully checked in for your booking.",
                 booking
         );
 
         sendInAppAndEmail(
-                user,
+                booking.getUser(),
+                NotificationType.CHECK_IN_SUCCESS,
+                title,
+                message,
+                booking.getId()
+        );
+    }
+
+    public void sendWaitlistJoinedNotification(Waitlist waitlist) {
+        if (waitlist == null || waitlist.getUser() == null) {
+            return;
+        }
+
+        String title = "Joined Waitlist";
+        String message = buildWaitlistMessage(
+                "You have successfully joined the waitlist for this slot.",
+                waitlist
+        );
+
+        sendInAppAndEmail(
+                waitlist.getUser(),
+                NotificationType.WAITLIST_JOINED,
+                title,
+                message,
+                null
+        );
+    }
+
+    public void sendWaitlistAvailableNotification(Waitlist waitlist) {
+        if (waitlist == null || waitlist.getUser() == null) {
+            return;
+        }
+
+        String title = "Waitlist Slot Available";
+        String message = buildWaitlistMessage(
+                "A slot is now available. Please confirm within the response window, or it may be offered to the next user.",
+                waitlist
+        );
+
+        sendInAppAndEmail(
+                waitlist.getUser(),
                 NotificationType.WAITLIST_AVAILABLE,
                 title,
                 message,
-                booking != null ? booking.getId() : null
+                null
+        );
+    }
+
+    public void sendWaitlistAssignedNotification(Booking booking) {
+        if (booking == null || booking.getUser() == null) {
+            return;
+        }
+
+        String title = "Waitlist Booking Assigned";
+        String message = buildBookingMessage(
+                "A booking has been automatically assigned to you from the waitlist.",
+                booking
+        );
+
+        sendInAppAndEmail(
+                booking.getUser(),
+                NotificationType.WAITLIST_ASSIGNED,
+                title,
+                message,
+                booking.getId()
+        );
+    }
+
+    public void sendWaitlistExpiredNotification(Waitlist waitlist) {
+        if (waitlist == null || waitlist.getUser() == null) {
+            return;
+        }
+
+        String title = "Waitlist Offer Expired";
+        String message = buildWaitlistMessage(
+                "Your waitlist confirmation window has expired, and the slot may be offered to another user.",
+                waitlist
+        );
+
+        sendInAppAndEmail(
+                waitlist.getUser(),
+                NotificationType.WAITLIST_EXPIRED,
+                title,
+                message,
+                null
+        );
+    }
+
+    public void sendWaitlistCancelledNotification(Waitlist waitlist) {
+        if (waitlist == null || waitlist.getUser() == null) {
+            return;
+        }
+
+        String title = "Waitlist Entry Cancelled";
+        String message = buildWaitlistMessage(
+                "Your waitlist entry has been cancelled.",
+                waitlist
+        );
+
+        sendInAppAndEmail(
+                waitlist.getUser(),
+                NotificationType.WAITLIST_CANCELLED,
+                title,
+                message,
+                null
         );
     }
 

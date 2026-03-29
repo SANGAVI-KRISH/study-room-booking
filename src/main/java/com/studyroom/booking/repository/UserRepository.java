@@ -16,5 +16,4 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     // Check if email already exists (used during registration)
     boolean existsByEmail(String email);
-
 }

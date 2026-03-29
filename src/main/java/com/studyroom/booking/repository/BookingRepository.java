@@ -4,8 +4,10 @@ import com.studyroom.booking.model.Booking;
 import com.studyroom.booking.model.BookingStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -30,9 +32,17 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
     List<Booking> findByUser_IdOrderByStartAtDesc(UUID userId);
 
+    List<Booking> findByUser_IdAndStatus(UUID userId, BookingStatus status);
+
+    List<Booking> findByUser_IdAndStatusIn(UUID userId, List<BookingStatus> statuses);
+
     List<Booking> findByStatus(BookingStatus status);
 
     List<Booking> findByStatusIn(List<BookingStatus> statuses);
+
+    Optional<Booking> findByIdAndUser_Id(UUID bookingId, UUID userId);
+
+    // ================= REMINDER / UPCOMING =================
 
     @Query("""
         SELECT b
@@ -42,10 +52,6 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
         ORDER BY b.startAt ASC
     """)
     List<Booking> findPendingReminderBookings(BookingStatus status);
-
-    List<Booking> findByUser_IdAndStatus(UUID userId, BookingStatus status);
-
-    List<Booking> findByUser_IdAndStatusIn(UUID userId, List<BookingStatus> statuses);
 
     List<Booking> findByStartAtBetween(OffsetDateTime start, OffsetDateTime end);
 
@@ -87,6 +93,8 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             List<BookingStatus> statuses
     );
 
+    // ================= CONFLICT / OVERLAP CHECKS =================
+
     List<Booking> findByRoom_IdAndStartAtLessThanAndEndAtGreaterThanAndStatusIn(
             UUID roomId,
             OffsetDateTime endAt,
@@ -119,9 +127,23 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             OffsetDateTime startAt
     );
 
-    // ================= CHECK-IN / ATTENDANCE =================
+    boolean existsByRoom_IdAndStatusInAndStartAtLessThanAndEndAtGreaterThanAndIdNot(
+            UUID roomId,
+            List<BookingStatus> statuses,
+            OffsetDateTime endAt,
+            OffsetDateTime startAt,
+            UUID bookingId
+    );
 
-    Optional<Booking> findByIdAndUser_Id(UUID bookingId, UUID userId);
+    boolean existsByUser_IdAndStatusInAndStartAtLessThanAndEndAtGreaterThanAndIdNot(
+            UUID userId,
+            List<BookingStatus> statuses,
+            OffsetDateTime endAt,
+            OffsetDateTime startAt,
+            UUID bookingId
+    );
+
+    // ================= CHECK-IN / AUTO-CANCELLATION =================
 
     List<Booking> findByStatusAndStartAtLessThanEqualAndStartAtGreaterThanEqual(
             BookingStatus status,
@@ -132,6 +154,50 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     List<Booking> findByStatusAndEndAtBefore(BookingStatus status, OffsetDateTime time);
 
     List<Booking> findByStatusInAndEndAtBefore(List<BookingStatus> statuses, OffsetDateTime time);
+
+    @Query("""
+        SELECT b
+        FROM Booking b
+        WHERE b.status = :status
+          AND b.checkInDeadline IS NOT NULL
+          AND b.checkInDeadline <= :now
+          AND (b.checkinStatus = 'not_checked_in' OR b.checkinStatus IS NULL)
+        ORDER BY b.checkInDeadline ASC
+    """)
+    List<Booking> findBookingsEligibleForAutoCancellation(BookingStatus status, OffsetDateTime now);
+
+    @Query("""
+        SELECT b
+        FROM Booking b
+        WHERE b.status = :status
+          AND b.startAt <= :now
+          AND b.endAt > :now
+        ORDER BY b.startAt ASC
+    """)
+    List<Booking> findOngoingBookingsByStatus(BookingStatus status, OffsetDateTime now);
+
+    @Query("""
+        SELECT b
+        FROM Booking b
+        WHERE b.status IN :statuses
+          AND b.startAt <= :now
+          AND b.endAt > :now
+        ORDER BY b.startAt ASC
+    """)
+    List<Booking> findOngoingBookingsByStatuses(List<BookingStatus> statuses, OffsetDateTime now);
+
+    @Query("""
+        SELECT b
+        FROM Booking b
+        WHERE b.room.id = :roomId
+          AND b.status IN :statuses
+          AND b.startAt <= :now
+          AND b.endAt > :now
+        ORDER BY b.startAt ASC
+    """)
+    List<Booking> findCurrentRoomBookings(UUID roomId, List<BookingStatus> statuses, OffsetDateTime now);
+
+    // ================= ATTENDANCE / COMPLETION / FEEDBACK =================
 
     List<Booking> findByStatusAndFeedbackSubmittedFalse(BookingStatus status);
 
@@ -167,6 +233,66 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
         ORDER BY b.endAt DESC
     """)
     List<Booking> findPendingFeedbackBookings(UUID userId, BookingStatus status);
+
+    @Query("""
+        SELECT b
+        FROM Booking b
+        WHERE b.user.id = :userId
+          AND b.status IN :statuses
+        ORDER BY b.startAt DESC
+    """)
+    List<Booking> findUserBookingsByStatusesOrderByStartAtDesc(UUID userId, List<BookingStatus> statuses);
+
+    @Query("""
+        SELECT b
+        FROM Booking b
+        WHERE b.user.id = :userId
+          AND b.endAt < :now
+        ORDER BY b.endAt DESC
+    """)
+    List<Booking> findPastBookings(UUID userId, OffsetDateTime now);
+
+    @Query("""
+        SELECT b
+        FROM Booking b
+        WHERE b.user.id = :userId
+          AND b.endAt >= :now
+        ORDER BY b.startAt ASC
+    """)
+    List<Booking> findCurrentAndUpcomingBookings(UUID userId, OffsetDateTime now);
+
+    // ================= WAITLIST SUPPORT =================
+
+    @Query("""
+        SELECT b
+        FROM Booking b
+        WHERE b.room.id = :roomId
+          AND b.status IN :statuses
+          AND b.startAt < :endAt
+          AND b.endAt > :startAt
+        ORDER BY b.startAt ASC
+    """)
+    List<Booking> findConflictingBookingsForSlot(
+            UUID roomId,
+            OffsetDateTime startAt,
+            OffsetDateTime endAt,
+            List<BookingStatus> statuses
+    );
+
+    @Query("""
+        SELECT COUNT(b) > 0
+        FROM Booking b
+        WHERE b.room.id = :roomId
+          AND b.status IN :statuses
+          AND b.startAt < :endAt
+          AND b.endAt > :startAt
+    """)
+    boolean hasConflictingBookingsForSlot(
+            UUID roomId,
+            OffsetDateTime startAt,
+            OffsetDateTime endAt,
+            List<BookingStatus> statuses
+    );
 
     // ================= COUNT METHODS =================
 
@@ -244,4 +370,15 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
         ORDER BY COUNT(b) DESC
     """)
     List<Object[]> findUserActivityReport();
+
+    @Query("""
+        SELECT b FROM Booking b
+        WHERE b.status = :status
+        AND b.checkInDeadline < :now
+        AND b.checkedInAt IS NULL
+    """)
+    List<Booking> findBookingsEligibleForAutoCancellation(
+            @Param("status") BookingStatus status,
+            @Param("now") LocalDateTime now
+    );
 }

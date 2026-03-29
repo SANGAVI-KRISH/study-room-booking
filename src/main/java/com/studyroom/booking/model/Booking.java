@@ -11,6 +11,8 @@ import java.util.UUID;
 @Table(name = "bookings")
 public class Booking {
 
+    private static final long DEFAULT_CHECKIN_GRACE_MINUTES = 15;
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(columnDefinition = "uuid", updatable = false, nullable = false)
@@ -50,8 +52,14 @@ public class Booking {
     @Column(name = "checkin_status", nullable = false, length = 20)
     private String checkinStatus = "not_checked_in";
 
+    @Column(name = "check_in_deadline")
+    private OffsetDateTime checkInDeadline;
+
     @Column(name = "checked_in_at")
     private OffsetDateTime checkedInAt;
+
+    @Column(name = "auto_cancelled_at")
+    private OffsetDateTime autoCancelledAt;
 
     @Column(name = "is_present", nullable = false)
     private Boolean isPresent = false;
@@ -104,11 +112,6 @@ public class Booking {
         this.reminderSent = false;
     }
 
-    public void cancel(String reason) {
-        this.status = BookingStatus.CANCELLED;
-        this.cancellationReason = reason;
-    }
-
     @PrePersist
     public void prePersist() {
         applyDefaults();
@@ -140,6 +143,10 @@ public class Booking {
             this.feedbackSubmitted = false;
         }
 
+        if (this.attendeeCount == null || this.attendeeCount <= 0) {
+            this.attendeeCount = 1;
+        }
+
         if (this.purpose != null) {
             this.purpose = this.purpose.trim();
             if (this.purpose.isBlank()) {
@@ -147,8 +154,12 @@ public class Booking {
             }
         }
 
-        if (this.attendeeCount == null) {
-            this.attendeeCount = 1;
+        if (this.status == BookingStatus.APPROVED && this.approvalTime == null) {
+            this.approvalTime = OffsetDateTime.now();
+        }
+
+        if (this.status == BookingStatus.APPROVED && this.checkInDeadline == null && this.startAt != null) {
+            this.checkInDeadline = this.startAt.plusMinutes(DEFAULT_CHECKIN_GRACE_MINUTES);
         }
     }
 
@@ -168,13 +179,20 @@ public class Booking {
 
     public boolean isOngoing() {
         OffsetDateTime now = OffsetDateTime.now();
-        return startAt != null && endAt != null
+        return startAt != null
+                && endAt != null
                 && (startAt.isBefore(now) || startAt.isEqual(now))
                 && endAt.isAfter(now);
     }
 
+    public boolean isEnded() {
+        return endAt != null && (endAt.isBefore(OffsetDateTime.now()) || endAt.isEqual(OffsetDateTime.now()));
+    }
+
     public long getDurationMinutes() {
-        if (!isValidTimeRange()) return 0;
+        if (!isValidTimeRange()) {
+            return 0;
+        }
         return Duration.between(startAt, endAt).toMinutes();
     }
 
@@ -222,7 +240,84 @@ public class Booking {
     }
 
     public boolean isActiveBooking() {
-        return isPending() || isApproved() || isCheckedIn();
+        return status != null && status.isActive();
+    }
+
+    public boolean canBeCancelled() {
+        return status != null && status.canBeCancelled();
+    }
+
+    public boolean canBeCheckedIn() {
+        return status != null && status.canBeCheckedIn();
+    }
+
+    public boolean canBeCompleted() {
+        return status != null && status.canBeCompleted();
+    }
+
+    public boolean hasCheckInDeadlinePassed() {
+        return checkInDeadline != null && OffsetDateTime.now().isAfter(checkInDeadline);
+    }
+
+    public boolean isEligibleForAutoCancellation() {
+        return isApproved()
+                && !"checked_in".equalsIgnoreCase(checkinStatus)
+                && hasCheckInDeadlinePassed();
+    }
+
+    public boolean freesSlot() {
+        return status != null && status.freesSlot();
+    }
+
+    public void approve(User approvedByUser) {
+        this.status = BookingStatus.APPROVED;
+        this.approvedBy = approvedByUser;
+        this.approvalTime = OffsetDateTime.now();
+        this.checkinStatus = "not_checked_in";
+
+        if (this.startAt != null) {
+            this.checkInDeadline = this.startAt.plusMinutes(DEFAULT_CHECKIN_GRACE_MINUTES);
+        }
+    }
+
+    public void reject(String reason) {
+        this.status = BookingStatus.REJECTED;
+        this.cancellationReason = reason;
+    }
+
+    public void cancel(String reason) {
+        this.status = BookingStatus.CANCELLED;
+        this.cancellationReason = reason;
+    }
+
+    public void markCheckedIn() {
+        this.status = BookingStatus.CHECKED_IN;
+        this.checkinStatus = "checked_in";
+        this.checkedInAt = OffsetDateTime.now();
+        this.isPresent = true;
+        this.attendanceMarkedAt = this.checkedInAt;
+    }
+
+    public void markNoShow() {
+        this.status = BookingStatus.NO_SHOW;
+        this.checkinStatus = "late";
+        this.isPresent = false;
+        this.attendanceMarkedAt = OffsetDateTime.now();
+    }
+
+    public void autoCancel(String reason) {
+        this.status = BookingStatus.AUTO_CANCELLED;
+        this.cancellationReason = reason;
+        this.autoCancelledAt = OffsetDateTime.now();
+        this.isPresent = false;
+
+        if (this.checkinStatus == null || this.checkinStatus.isBlank() || "not_checked_in".equalsIgnoreCase(this.checkinStatus)) {
+            this.checkinStatus = "not_checked_in";
+        }
+    }
+
+    public void complete() {
+        this.status = BookingStatus.COMPLETED;
     }
 
     // ================= GETTERS & SETTERS =================
@@ -267,8 +362,16 @@ public class Booking {
         return checkinStatus;
     }
 
+    public OffsetDateTime getCheckInDeadline() {
+        return checkInDeadline;
+    }
+
     public OffsetDateTime getCheckedInAt() {
         return checkedInAt;
+    }
+
+    public OffsetDateTime getAutoCancelledAt() {
+        return autoCancelledAt;
     }
 
     public Boolean getIsPresent() {
@@ -351,8 +454,16 @@ public class Booking {
         this.checkinStatus = checkinStatus;
     }
 
+    public void setCheckInDeadline(OffsetDateTime checkInDeadline) {
+        this.checkInDeadline = checkInDeadline;
+    }
+
     public void setCheckedInAt(OffsetDateTime checkedInAt) {
         this.checkedInAt = checkedInAt;
+    }
+
+    public void setAutoCancelledAt(OffsetDateTime autoCancelledAt) {
+        this.autoCancelledAt = autoCancelledAt;
     }
 
     public void setIsPresent(Boolean isPresent) {

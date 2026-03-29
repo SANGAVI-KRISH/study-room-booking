@@ -29,6 +29,8 @@ public class BookingService {
     private final NotificationService notificationService;
     private final TimeSlotService timeSlotService;
     private final MaintenanceService maintenanceService;
+    private final WaitlistService waitlistService;
+    
 
     private static final ZoneId APP_ZONE = ZoneId.of("Asia/Kolkata");
 
@@ -44,7 +46,8 @@ public class BookingService {
             UserRepository userRepository,
             NotificationService notificationService,
             TimeSlotService timeSlotService,
-            MaintenanceService maintenanceService
+            MaintenanceService maintenanceService,
+            WaitlistService waitlistService
     ) {
         this.bookingRepository = bookingRepository;
         this.studyRoomRepository = studyRoomRepository;
@@ -52,6 +55,7 @@ public class BookingService {
         this.notificationService = notificationService;
         this.timeSlotService = timeSlotService;
         this.maintenanceService = maintenanceService;
+        this.waitlistService = waitlistService;
     }
 
     // =========================
@@ -215,6 +219,11 @@ public class BookingService {
         return getBookingsByStatus(BookingStatus.NO_SHOW);
     }
 
+    @Transactional(readOnly = true)
+    public List<Booking> getAutoCancelledBookings() {
+        return getBookingsByStatus(BookingStatus.AUTO_CANCELLED);
+    }
+
     // =========================
     // HISTORY METHODS
     // =========================
@@ -245,6 +254,11 @@ public class BookingService {
     @Transactional(readOnly = true)
     public List<Booking> getNoShowBookingsByUserId(UUID userId) {
         return getBookingsByUserIdAndStatus(userId, BookingStatus.NO_SHOW);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Booking> getAutoCancelledBookingsByUserId(UUID userId) {
+        return getBookingsByUserIdAndStatus(userId, BookingStatus.AUTO_CANCELLED);
     }
 
     @Transactional(readOnly = true)
@@ -314,212 +328,99 @@ public class BookingService {
     // =========================
 
     public Booking createBooking(
-            UUID roomId,
-            UUID userId,
-            OffsetDateTime startAt,
-            OffsetDateTime endAt,
-            String purpose,
-            Integer attendeeCount
-    ) {
-        if (roomId == null) {
-            throw new RuntimeException("Room ID is required");
-        }
+        UUID roomId,
+        UUID userId,
+        OffsetDateTime startAt,
+        OffsetDateTime endAt,
+        String purpose,
+        Integer attendeeCount
+) {
+    // 1️⃣ Validate inputs
+    validateCreateBookingInputs(roomId, userId, startAt, endAt, attendeeCount);
 
-        if (userId == null) {
-            throw new RuntimeException("User ID is required");
-        }
+    // 2️⃣ Fetch room and user
+    StudyRoom room = studyRoomRepository.findById(roomId)
+            .orElseThrow(() -> new RuntimeException("Room not found"));
 
-        if (attendeeCount == null || attendeeCount <= 0) {
-            throw new RuntimeException("Attendee count must be greater than 0");
-        }
+    User user = userRepository.findById(userId)
+            .orElseThrow(() -> new RuntimeException("User not found"));
 
-        if (startAt == null || endAt == null || !endAt.isAfter(startAt)) {
-            throw new RuntimeException("Invalid booking time range");
-        }
+    // 3️⃣ Validate slot and maintenance
+    timeSlotService.validateBookingSlot(roomId, startAt, endAt);
+    validateRoomNotUnderMaintenance(room.getId(), startAt, endAt);
 
-        if (!startAt.isAfter(OffsetDateTime.now(APP_ZONE))) {
-            throw new RuntimeException("Start time must be in the future");
-        }
+    // 4️⃣ Validate room availability & handle waitlist
+    validateRoomBookingAvailability(room, startAt, endAt, userId, attendeeCount, null);
 
-        StudyRoom room = studyRoomRepository.findById(roomId)
-                .orElseThrow(() -> new RuntimeException("Room not found"));
+    // 5️⃣ Build booking based on role (STAFF / STUDENT)
+    Booking booking = buildNewBooking(room, user, startAt, endAt, purpose, attendeeCount);
 
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+    // 6️⃣ Save booking
+    Booking saved = bookingRepository.save(booking);
 
-        timeSlotService.validateBookingSlot(roomId, startAt, endAt);
-        validateRoomNotUnderMaintenance(room.getId(), startAt, endAt);
-        validateRoomBookingAvailability(room, startAt, endAt, userId, attendeeCount, null);
-
-        Booking booking = new Booking();
-        booking.setRoom(room);
-        booking.setUser(user);
-        booking.setStartAt(startAt);
-        booking.setEndAt(endAt);
-        booking.setPurpose(purpose);
-        booking.setAttendeeCount(attendeeCount);
-        booking.setReminderSent(false);
-        booking.setCheckinStatus("not_checked_in");
-        booking.setCheckedInAt(null);
-        booking.setIsPresent(false);
-        booking.setAttendanceMarkedAt(null);
-        booking.setFeedbackSubmitted(false);
-        booking.setCancellationReason(null);
-        booking.setQrToken(null);
-        booking.setApprovedBy(null);
-        booking.setApprovalTime(null);
-
-        if (Boolean.TRUE.equals(room.getApprovalRequired())) {
-            booking.setStatus(BookingStatus.PENDING);
-        } else {
-            booking.setStatus(BookingStatus.APPROVED);
-            booking.setApprovalTime(OffsetDateTime.now(APP_ZONE));
-            booking.setApprovedBy(user);
-        }
-
-        Booking saved = bookingRepository.save(booking);
-
-        if (BookingStatus.PENDING.equals(saved.getStatus())) {
-            notifyAdminsForNewBooking(saved);
-        } else if (BookingStatus.APPROVED.equals(saved.getStatus())) {
-            notificationService.sendBookingConfirmedNotification(saved);
-        }
-
-        return saved;
+    // 7️⃣ Send notifications based on status
+    if (BookingStatus.PENDING.equals(saved.getStatus())) {
+        notifyAdminsForNewBooking(saved);
+    } else if (BookingStatus.APPROVED.equals(saved.getStatus())) {
+        notificationService.sendBookingConfirmedNotification(saved);
     }
+
+    return saved;
+}
 
     // =========================
     // CREATE BOOKING - SLOT ID BASED
     // =========================
 
-    public Booking createBooking(
-            UUID roomId,
-            UUID userId,
-            UUID timeSlotId,
-            Integer attendeeCount,
-            String purpose
-    ) {
-        if (roomId == null) {
-            throw new RuntimeException("Room ID is required");
-        }
+ public Booking createBooking(
+        UUID roomId,
+        UUID userId,
+        UUID timeSlotId,
+        Integer attendeeCount,
+        String purpose
+) {
+    // 1️⃣ Validate basic inputs
+    if (roomId == null) throw new RuntimeException("Room ID is required");
+    if (userId == null) throw new RuntimeException("User ID is required");
+    if (timeSlotId == null) throw new RuntimeException("Time slot ID is required");
+    if (attendeeCount == null || attendeeCount <= 0)
+        throw new RuntimeException("Attendee count must be greater than 0");
 
-        if (userId == null) {
-            throw new RuntimeException("User ID is required");
-        }
+    // 2️⃣ Fetch room, user, and slot
+    StudyRoom room = studyRoomRepository.findById(roomId)
+            .orElseThrow(() -> new RuntimeException("Room not found"));
+    User user = userRepository.findById(userId)
+            .orElseThrow(() -> new RuntimeException("User not found"));
+    TimeSlot slot = timeSlotService.getSlotById(timeSlotId);
 
-        if (timeSlotId == null) {
-            throw new RuntimeException("Time slot ID is required");
-        }
+    if (slot.getRoom() == null || !roomId.equals(slot.getRoom().getId()))
+        throw new RuntimeException("Selected slot does not belong to this room");
+    if (slot.getStartAt() == null || slot.getEndAt() == null || !slot.getEndAt().isAfter(slot.getStartAt()))
+        throw new RuntimeException("Invalid time slot range");
+    if (!slot.getStartAt().isAfter(OffsetDateTime.now(APP_ZONE)))
+        throw new RuntimeException("Start time must be in the future");
 
-        if (attendeeCount == null || attendeeCount <= 0) {
-            throw new RuntimeException("Attendee count must be greater than 0");
-        }
+    // 3️⃣ Validate maintenance & availability
+    validateRoomNotUnderMaintenance(room.getId(), slot.getStartAt(), slot.getEndAt());
 
-        StudyRoom room = studyRoomRepository.findById(roomId)
-                .orElseThrow(() -> new RuntimeException("Room not found"));
+    // ✅ Directly validate availability & auto-add to waitlist if needed
+    validateRoomBookingAvailability(room, slot.getStartAt(), slot.getEndAt(), userId, attendeeCount, null);
 
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+    // 4️⃣ Build booking
+    Booking booking = buildNewBooking(room, user, slot.getStartAt(), slot.getEndAt(), purpose, attendeeCount);
 
-        TimeSlot slot = timeSlotService.getSlotById(timeSlotId);
+    // 5️⃣ Save booking
+    Booking saved = bookingRepository.save(booking);
 
-        if (slot.getRoom() == null || !roomId.equals(slot.getRoom().getId())) {
-            throw new RuntimeException("Selected slot does not belong to this room");
-        }
-
-        if (slot.getStartAt() == null || slot.getEndAt() == null || !slot.getEndAt().isAfter(slot.getStartAt())) {
-            throw new RuntimeException("Invalid time slot range");
-        }
-
-        if (!slot.getStartAt().isAfter(OffsetDateTime.now(APP_ZONE))) {
-            throw new RuntimeException("Start time must be in the future");
-        }
-
-        validateRoomNotUnderMaintenance(room.getId(), slot.getStartAt(), slot.getEndAt());
-        validateRoomBookingAvailability(room, slot.getStartAt(), slot.getEndAt(), userId, attendeeCount, null);
-
-        Booking booking = new Booking();
-        booking.setRoom(room);
-        booking.setUser(user);
-        booking.setStartAt(slot.getStartAt());
-        booking.setEndAt(slot.getEndAt());
-        booking.setPurpose(purpose);
-        booking.setAttendeeCount(attendeeCount);
-        booking.setReminderSent(false);
-        booking.setCheckinStatus("not_checked_in");
-        booking.setCheckedInAt(null);
-        booking.setIsPresent(false);
-        booking.setAttendanceMarkedAt(null);
-        booking.setFeedbackSubmitted(false);
-        booking.setCancellationReason(null);
-        booking.setQrToken(null);
-        booking.setApprovedBy(null);
-        booking.setApprovalTime(null);
-
-        if (Boolean.TRUE.equals(room.getApprovalRequired())) {
-            booking.setStatus(BookingStatus.PENDING);
-        } else {
-            booking.setStatus(BookingStatus.APPROVED);
-            booking.setApprovalTime(OffsetDateTime.now(APP_ZONE));
-            booking.setApprovedBy(user);
-        }
-
-        Booking saved = bookingRepository.save(booking);
-
-        if (BookingStatus.PENDING.equals(saved.getStatus())) {
-            notifyAdminsForNewBooking(saved);
-        } else if (BookingStatus.APPROVED.equals(saved.getStatus())) {
-            notificationService.sendBookingConfirmedNotification(saved);
-        }
-
-        return saved;
+    // 6️⃣ Send notifications
+    if (BookingStatus.PENDING.equals(saved.getStatus())) {
+        notifyAdminsForNewBooking(saved);
+    } else if (BookingStatus.APPROVED.equals(saved.getStatus())) {
+        notificationService.sendBookingConfirmedNotification(saved);
     }
 
-    // =========================
-    // CHECK-IN
-    // =========================
-
-    public Booking checkInBooking(UUID bookingId, UUID userId) {
-        if (bookingId == null) {
-            throw new RuntimeException("Booking ID is required");
-        }
-
-        if (userId == null) {
-            throw new RuntimeException("User ID is required");
-        }
-
-        Booking booking = bookingRepository.findByIdAndUser_Id(bookingId, userId)
-                .orElseThrow(() -> new RuntimeException("Booking not found for this user"));
-
-        if (!BookingStatus.APPROVED.equals(booking.getStatus())) {
-            throw new RuntimeException("Only approved bookings can be checked in");
-        }
-
-        if ("checked_in".equalsIgnoreCase(booking.getCheckinStatus())
-                || BookingStatus.CHECKED_IN.equals(booking.getStatus())
-                || booking.getCheckedInAt() != null) {
-            throw new RuntimeException("Booking already checked in");
-        }
-
-        OffsetDateTime now = OffsetDateTime.now(APP_ZONE);
-
-        if (!isWithinCheckInWindow(booking, now)) {
-            OffsetDateTime allowedFrom = booking.getStartAt().minusMinutes(CHECKIN_EARLY_MINUTES);
-            OffsetDateTime allowedUntil = booking.getStartAt().plusMinutes(CHECKIN_LATE_MINUTES);
-            throw new RuntimeException(
-                    "Check-in allowed only from " + allowedFrom + " to " + allowedUntil
-            );
-        }
-
-        booking.setCheckinStatus("checked_in");
-        booking.setCheckedInAt(now);
-        booking.setIsPresent(true);
-        booking.setAttendanceMarkedAt(now);
-        booking.setStatus(BookingStatus.CHECKED_IN);
-
-        return bookingRepository.save(booking);
-    }
-
+    return saved;
+}
     @Transactional(readOnly = true)
     public boolean canCheckIn(UUID bookingId, UUID userId) {
         if (bookingId == null || userId == null) {
@@ -569,9 +470,21 @@ public class BookingService {
             throw new RuntimeException("This booking cannot be approved");
         }
 
-        booking.setStatus(BookingStatus.APPROVED);
-        booking.setApprovedBy(approver);
-        booking.setApprovalTime(OffsetDateTime.now(APP_ZONE));
+        if (booking.getRoom() == null) {
+            throw new RuntimeException("Booking room is missing");
+        }
+
+        validateRoomNotUnderMaintenance(booking.getRoom().getId(), booking.getStartAt(), booking.getEndAt());
+        validateRoomBookingAvailability(
+                booking.getRoom(),
+                booking.getStartAt(),
+                booking.getEndAt(),
+                booking.getUser() != null ? booking.getUser().getId() : null,
+                booking.getAttendeeCount(),
+                booking.getId()
+        );
+
+        booking.approve(approver);
         booking.setReminderSent(false);
 
         Booking saved = bookingRepository.save(booking);
@@ -592,10 +505,11 @@ public class BookingService {
             throw new RuntimeException("This booking cannot be rejected");
         }
 
-        booking.setStatus(BookingStatus.REJECTED);
+        booking.reject("Rejected by admin");
 
         Booking saved = bookingRepository.save(booking);
         notificationService.sendBookingRejectedNotification(saved);
+        waitlistService.processReleasedBooking(saved);
 
         return saved;
     }
@@ -609,14 +523,11 @@ public class BookingService {
             throw new RuntimeException("This booking cannot be cancelled");
         }
 
-        booking.setStatus(BookingStatus.CANCELLED);
-
-        if (booking.getCancellationReason() == null || booking.getCancellationReason().isBlank()) {
-            booking.setCancellationReason("Cancelled by user/admin");
-        }
+        booking.cancel("Cancelled by user/admin");
 
         Booking saved = bookingRepository.save(booking);
         notificationService.sendBookingCancelledNotification(saved);
+        waitlistService.processReleasedBooking(saved);
 
         return saved;
     }
@@ -625,8 +536,7 @@ public class BookingService {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new RuntimeException("Booking not found"));
 
-        booking.setStatus(BookingStatus.COMPLETED);
-
+        booking.complete();
         return bookingRepository.save(booking);
     }
 
@@ -638,35 +548,49 @@ public class BookingService {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new RuntimeException("Booking not found"));
 
-        booking.setStatus(status);
+        boolean releasedSlot = false;
 
-        if (BookingStatus.APPROVED.equals(status) && booking.getApprovalTime() == null) {
-            booking.setApprovalTime(OffsetDateTime.now(APP_ZONE));
+        if (BookingStatus.APPROVED.equals(status)) {
+            if (booking.getRoom() == null) {
+                throw new RuntimeException("Booking room is missing");
+            }
+
+            validateRoomNotUnderMaintenance(booking.getRoom().getId(), booking.getStartAt(), booking.getEndAt());
+            validateRoomBookingAvailability(
+                    booking.getRoom(),
+                    booking.getStartAt(),
+                    booking.getEndAt(),
+                    booking.getUser() != null ? booking.getUser().getId() : null,
+                    booking.getAttendeeCount(),
+                    booking.getId()
+            );
+
+            booking.setStatus(BookingStatus.APPROVED);
+            if (booking.getApprovalTime() == null) {
+                booking.setApprovalTime(OffsetDateTime.now(APP_ZONE));
+            }
             booking.setReminderSent(false);
-        }
-
-        if (BookingStatus.CHECKED_IN.equals(status)) {
-            OffsetDateTime now = OffsetDateTime.now(APP_ZONE);
-            booking.setCheckinStatus("checked_in");
-            if (booking.getCheckedInAt() == null) {
-                booking.setCheckedInAt(now);
+            if (booking.getCheckInDeadline() == null && booking.getStartAt() != null) {
+                booking.setCheckInDeadline(booking.getStartAt().plusMinutes(15));
             }
-            booking.setIsPresent(true);
-            if (booking.getAttendanceMarkedAt() == null) {
-                booking.setAttendanceMarkedAt(now);
-            }
-        }
-
-        if (BookingStatus.NO_SHOW.equals(status)) {
-            booking.setCheckinStatus("not_checked_in");
-            if (booking.getIsPresent() == null) {
-                booking.setIsPresent(false);
-            }
-        }
-
-        if (BookingStatus.CANCELLED.equals(status)
-                && (booking.getCancellationReason() == null || booking.getCancellationReason().isBlank())) {
-            booking.setCancellationReason("Status updated to cancelled");
+        } else if (BookingStatus.CHECKED_IN.equals(status)) {
+            booking.markCheckedIn();
+        } else if (BookingStatus.NO_SHOW.equals(status)) {
+            booking.markNoShow();
+            releasedSlot = true;
+        } else if (BookingStatus.CANCELLED.equals(status)) {
+            booking.cancel("Status updated to cancelled");
+            releasedSlot = true;
+        } else if (BookingStatus.REJECTED.equals(status)) {
+            booking.reject("Status updated to rejected");
+            releasedSlot = true;
+        } else if (BookingStatus.AUTO_CANCELLED.equals(status)) {
+            booking.autoCancel("Status updated to auto-cancelled");
+            releasedSlot = true;
+        } else if (BookingStatus.COMPLETED.equals(status)) {
+            booking.complete();
+        } else {
+            booking.setStatus(status);
         }
 
         Booking saved = bookingRepository.save(booking);
@@ -677,6 +601,14 @@ public class BookingService {
             notificationService.sendBookingRejectedNotification(saved);
         } else if (BookingStatus.CANCELLED.equals(status)) {
             notificationService.sendBookingCancelledNotification(saved);
+        } else if (BookingStatus.AUTO_CANCELLED.equals(status)) {
+            notificationService.sendAutoCancelledNotification(saved);
+        } else if (BookingStatus.CHECKED_IN.equals(status)) {
+            notificationService.sendCheckInSuccessNotification(saved);
+        }
+
+        if (releasedSlot) {
+            waitlistService.processReleasedBooking(saved);
         }
 
         return saved;
@@ -692,7 +624,7 @@ public class BookingService {
         List<Booking> bookings = bookingRepository.findBookingsToMarkCompleted(BookingStatus.CHECKED_IN, now);
 
         for (Booking booking : bookings) {
-            booking.setStatus(BookingStatus.COMPLETED);
+            booking.complete();
         }
 
         if (!bookings.isEmpty()) {
@@ -708,13 +640,14 @@ public class BookingService {
         List<Booking> bookings = bookingRepository.findBookingsToMarkNoShow(BookingStatus.APPROVED, now);
 
         for (Booking booking : bookings) {
-            booking.setStatus(BookingStatus.NO_SHOW);
-            booking.setCheckinStatus("not_checked_in");
-            booking.setIsPresent(false);
+            booking.markNoShow();
         }
 
         if (!bookings.isEmpty()) {
             bookingRepository.saveAll(bookings);
+            for (Booking booking : bookings) {
+                waitlistService.processReleasedBooking(booking);
+            }
         }
 
         return bookings.size();
@@ -735,6 +668,10 @@ public class BookingService {
 
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new RuntimeException("Booking not found"));
+
+        OffsetDateTime oldStartAt = booking.getStartAt();
+        OffsetDateTime oldEndAt = booking.getEndAt();
+        UUID oldRoomId = booking.getRoom() != null ? booking.getRoom().getId() : null;
 
         if (BookingStatus.CANCELLED.equals(booking.getStatus())
                 || BookingStatus.COMPLETED.equals(booking.getStatus())
@@ -767,8 +704,10 @@ public class BookingService {
         booking.setReminderSent(false);
         booking.setCheckinStatus("not_checked_in");
         booking.setCheckedInAt(null);
+        booking.setCheckInDeadline(null);
         booking.setIsPresent(false);
         booking.setAttendanceMarkedAt(null);
+        booking.setAutoCancelledAt(null);
 
         if (Boolean.TRUE.equals(booking.getRoom().getApprovalRequired())) {
             booking.setStatus(BookingStatus.PENDING);
@@ -776,6 +715,7 @@ public class BookingService {
             booking.setApprovalTime(null);
         } else {
             booking.setStatus(BookingStatus.APPROVED);
+            booking.setApprovalTime(OffsetDateTime.now(APP_ZONE));
         }
 
         Booking saved = bookingRepository.save(booking);
@@ -784,6 +724,10 @@ public class BookingService {
             notifyAdminsForNewBooking(saved);
         } else if (BookingStatus.APPROVED.equals(saved.getStatus())) {
             notificationService.sendBookingConfirmedNotification(saved);
+        }
+
+        if (oldRoomId != null && oldStartAt != null && oldEndAt != null) {
+            waitlistService.processReleasedSlot(oldRoomId, oldStartAt, oldEndAt);
         }
 
         return saved;
@@ -797,35 +741,132 @@ public class BookingService {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new RuntimeException("Booking not found"));
 
+        UUID roomId = booking.getRoom() != null ? booking.getRoom().getId() : null;
+        OffsetDateTime startAt = booking.getStartAt();
+        OffsetDateTime endAt = booking.getEndAt();
+
         bookingRepository.delete(booking);
+
+        if (roomId != null && startAt != null && endAt != null) {
+            waitlistService.processReleasedSlot(roomId, startAt, endAt);
+        }
     }
 
     // =========================
     // INTERNAL HELPERS
     // =========================
 
-    private void validateRoomBookingAvailability(
-            StudyRoom room,
-            OffsetDateTime startAt,
-            OffsetDateTime endAt,
-            UUID userId,
-            Integer attendeeCount,
-            UUID excludeBookingId
-    ) {
-        if (room == null) {
-            throw new RuntimeException("Room is required");
+    private void validateCreateBookingInputs(UUID roomId,
+                                             UUID userId,
+                                             OffsetDateTime startAt,
+                                             OffsetDateTime endAt,
+                                             Integer attendeeCount) {
+        if (roomId == null) {
+            throw new RuntimeException("Room ID is required");
         }
 
-        if (startAt == null || endAt == null || !endAt.isAfter(startAt)) {
-            throw new RuntimeException("Invalid booking time range");
+        if (userId == null) {
+            throw new RuntimeException("User ID is required");
         }
 
         if (attendeeCount == null || attendeeCount <= 0) {
             throw new RuntimeException("Attendee count must be greater than 0");
         }
 
-        if (userId != null && excludeBookingId == null) {
-            boolean alreadyBookedBySameUser = bookingRepository
+        if (startAt == null || endAt == null || !endAt.isAfter(startAt)) {
+            throw new RuntimeException("Invalid booking time range");
+        }
+
+        if (!startAt.isAfter(OffsetDateTime.now(APP_ZONE))) {
+            throw new RuntimeException("Start time must be in the future");
+        }
+    }
+
+    private Booking buildNewBooking(StudyRoom room,
+                               User user,
+                               OffsetDateTime startAt,
+                               OffsetDateTime endAt,
+                               String purpose,
+                               Integer attendeeCount) {
+
+    Booking booking = new Booking();
+    booking.setRoom(room);
+    booking.setUser(user);
+    booking.setStartAt(startAt);
+    booking.setEndAt(endAt);
+    booking.setPurpose(purpose);
+    booking.setAttendeeCount(attendeeCount);
+    booking.setReminderSent(false);
+    booking.setCheckinStatus("not_checked_in");
+    booking.setCheckedInAt(null);
+    booking.setCheckInDeadline(null);
+    booking.setAutoCancelledAt(null);
+    booking.setIsPresent(false);
+    booking.setAttendanceMarkedAt(null);
+    booking.setFeedbackSubmitted(false);
+    booking.setCancellationReason(null);
+    booking.setQrToken(null);
+    booking.setApprovedBy(null);
+    booking.setApprovalTime(null);
+
+    // 🔥 IMPORTANT LOGIC STARTS HERE
+
+    // STAFF → Always auto approved
+    if (user.getRole() != null && user.getRole().name().equals("STAFF")) {
+        booking.setStatus(BookingStatus.APPROVED);
+        booking.setApprovalTime(OffsetDateTime.now(APP_ZONE));
+        booking.setApprovedBy(user);
+        booking.setCheckInDeadline(startAt.plusMinutes(15));
+    }
+
+    // STUDENT / OTHERS → Follow normal rule
+    else {
+        if (Boolean.TRUE.equals(room.getApprovalRequired())) {
+            booking.setStatus(BookingStatus.PENDING);
+        } else {
+            booking.setStatus(BookingStatus.APPROVED);
+            booking.setApprovalTime(OffsetDateTime.now(APP_ZONE));
+            booking.setApprovedBy(user);
+            booking.setCheckInDeadline(startAt.plusMinutes(15));
+        }
+    }
+
+    return booking;
+}
+
+    private void validateRoomBookingAvailability(
+        StudyRoom room,
+        OffsetDateTime startAt,
+        OffsetDateTime endAt,
+        UUID userId,
+        Integer attendeeCount,
+        UUID excludeBookingId
+) {
+    if (room == null) {
+        throw new RuntimeException("Room is required");
+    }
+
+    if (startAt == null || endAt == null || !endAt.isAfter(startAt)) {
+        throw new RuntimeException("Invalid booking time range");
+    }
+
+    if (attendeeCount == null || attendeeCount <= 0) {
+        throw new RuntimeException("Attendee count must be greater than 0");
+    }
+
+    // 🔍 Fetch user (needed for STAFF priority)
+    User user = null;
+    if (userId != null) {
+        user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+    }
+
+    // Check if user already has an overlapping booking
+    if (userId != null) {
+        boolean alreadyBookedBySameUser;
+
+        if (excludeBookingId == null) {
+            alreadyBookedBySameUser = bookingRepository
                     .findByUser_IdAndStartAtBetweenAndStatusIn(
                             userId,
                             startAt.minusDays(1),
@@ -839,37 +880,55 @@ public class BookingService {
                             existing.getStartAt().isBefore(endAt) &&
                             existing.getEndAt().isAfter(startAt)
                     );
-
-            if (alreadyBookedBySameUser) {
-                throw new RuntimeException("You already have another booking during this time");
-            }
+        } else {
+            alreadyBookedBySameUser = bookingRepository
+                    .existsByUser_IdAndStatusInAndStartAtLessThanAndEndAtGreaterThanAndIdNot(
+                            userId,
+                            ACTIVE_STATUSES,
+                            endAt,
+                            startAt,
+                            excludeBookingId
+                    );
         }
 
-        int alreadyBookedCount = bookingRepository
-                .findByRoom_IdAndStartAtLessThanAndEndAtGreaterThanAndStatusIn(
-                        room.getId(),
-                        endAt,
-                        startAt,
-                        ACTIVE_STATUSES
-                )
-                .stream()
-                .filter(existing -> excludeBookingId == null || !excludeBookingId.equals(existing.getId()))
-                .map(Booking::getAttendeeCount)
-                .filter(count -> count != null)
-                .mapToInt(Integer::intValue)
-                .sum();
-
-        int capacity = room.getSeatingCapacity() != null ? room.getSeatingCapacity() : 0;
-        int remaining = capacity - alreadyBookedCount;
-
-        if (remaining <= 0) {
-            throw new RuntimeException("Selected time is full");
-        }
-
-        if (attendeeCount > remaining) {
-            throw new RuntimeException("Only " + remaining + " seats available");
+        if (alreadyBookedBySameUser) {
+            throw new RuntimeException("You already have another booking during this time");
         }
     }
+
+    // Calculate already booked seats for this room & time
+    int alreadyBookedCount = bookingRepository
+            .findByRoom_IdAndStartAtLessThanAndEndAtGreaterThanAndStatusIn(
+                    room.getId(),
+                    endAt,
+                    startAt,
+                    ACTIVE_STATUSES
+            )
+            .stream()
+            .filter(existing -> excludeBookingId == null || !excludeBookingId.equals(existing.getId()))
+            .map(Booking::getAttendeeCount)
+            .filter(count -> count != null)
+            .mapToInt(Integer::intValue)
+            .sum();
+
+    int capacity = room.getSeatingCapacity() != null ? room.getSeatingCapacity() : 0;
+    int remainingSeats = capacity - alreadyBookedCount;
+
+    // =========================
+    // 🔥 WAITLIST & STAFF PRIORITY
+    // =========================
+
+    // STAFF bypass capacity checks
+    if (user != null && user.getRole() != null && user.getRole().name().equals("STAFF")) {
+        return;
+    }
+
+    // If room full or not enough seats → add to waitlist
+    if (remainingSeats <= 0 || attendeeCount > remainingSeats) {
+        waitlistService.addToWaitlist(room, userId, startAt, endAt);
+        throw new RuntimeException("Room full / insufficient seats. You have been added to the waitlist.");
+    }
+}
 
     private void validateRoomNotUnderMaintenance(UUID roomId, OffsetDateTime startAt, OffsetDateTime endAt) {
         if (roomId == null || startAt == null || endAt == null) {
@@ -924,5 +983,29 @@ public class BookingService {
 
     private boolean isAdminUser(User user) {
         return user != null && user.isAdmin();
+    }
+
+    public Booking checkInBooking(UUID bookingId, UUID userId) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new RuntimeException("Booking not found"));
+
+        // logic for checking in
+        booking.setCheckedInAt(OffsetDateTime.now());
+        booking.setCheckinStatus("checked_in"); // use string instead of boolean
+        booking.setIsPresent(true);
+        
+        return bookingRepository.save(booking);
+    }
+
+    @Transactional
+    public void processSingleBooking(Booking booking) {
+
+        // Auto cancel
+        booking.autoCancel("Auto-cancelled due to no check-in");
+
+        bookingRepository.save(booking);
+
+        // Trigger waitlist
+        waitlistService.processReleasedBooking(booking);
     }
 }

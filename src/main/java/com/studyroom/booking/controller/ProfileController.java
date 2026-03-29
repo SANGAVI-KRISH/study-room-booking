@@ -1,15 +1,18 @@
 package com.studyroom.booking.controller;
 
-import com.studyroom.booking.model.User;
-import com.studyroom.booking.service.UserService;
+import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.studyroom.booking.dto.UpdatePasswordRequest;
+import com.studyroom.booking.model.User;
+import com.studyroom.booking.service.UserService;
+
 @RestController
 @RequestMapping("/api/profile")
-@CrossOrigin(origins = "http://localhost:5173")
+@CrossOrigin(origins = {"http://localhost:5173", "http://127.0.0.1:5173"})
 public class ProfileController {
 
     @Autowired
@@ -18,28 +21,38 @@ public class ProfileController {
     // Get user profile by email
     @GetMapping("/{email}")
     public ResponseEntity<?> getProfile(@PathVariable String email) {
+        try {
+            User user = userService.getProfile(email);
 
-        User user = userService.getProfile(email);
+            if (user == null) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "message", "User not found"
+                ));
+            }
 
-        if (user == null) {
-            return ResponseEntity.badRequest().body("User not found");
+            return ResponseEntity.ok(user);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message", e.getMessage()
+            ));
         }
-
-        return ResponseEntity.ok(user);
     }
 
-    // Update user profile
-    @PutMapping("/{email}")
-    public ResponseEntity<?> updateProfile(
+    // Update password by email
+    @PutMapping("/{email}/password")
+    public ResponseEntity<?> updatePassword(
             @PathVariable String email,
-            @RequestBody User updatedUser) {
+            @RequestBody UpdatePasswordRequest request) {
+        try {
+            String result = userService.updatePassword(email, request);
 
-        String result = userService.updateProfile(email, updatedUser);
-
-        if (result.equals("Profile updated successfully")) {
-            return ResponseEntity.ok(result);
+            return ResponseEntity.ok(Map.of(
+                    "message", result
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message", e.getMessage()
+            ));
         }
-
-        return ResponseEntity.badRequest().body(result);
     }
 }

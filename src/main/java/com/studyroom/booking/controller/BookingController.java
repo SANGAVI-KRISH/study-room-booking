@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -260,6 +261,16 @@ public class BookingController {
         return ResponseEntity.ok(responses);
     }
 
+    @GetMapping("/status/auto-cancelled")
+    public ResponseEntity<List<BookingResponse>> getAutoCancelledBookings() {
+        List<BookingResponse> responses = bookingService.getAutoCancelledBookings()
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
+    }
+
     @GetMapping("/user/{userId}/history")
     public ResponseEntity<List<BookingResponse>> getBookingHistory(@PathVariable UUID userId) {
         List<BookingResponse> responses = bookingService.getBookingHistory(userId)
@@ -303,6 +314,16 @@ public class BookingController {
     @GetMapping("/user/{userId}/history/no-show")
     public ResponseEntity<List<BookingResponse>> getNoShowBookingsByUserId(@PathVariable UUID userId) {
         List<BookingResponse> responses = bookingService.getNoShowBookingsByUserId(userId)
+                .stream()
+                .map(this::mapToBookingResponse)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(responses);
+    }
+
+    @GetMapping("/user/{userId}/history/auto-cancelled")
+    public ResponseEntity<List<BookingResponse>> getAutoCancelledBookingsByUserId(@PathVariable UUID userId) {
+        List<BookingResponse> responses = bookingService.getAutoCancelledBookingsByUserId(userId)
                 .stream()
                 .map(this::mapToBookingResponse)
                 .collect(Collectors.toList());
@@ -622,7 +643,14 @@ public class BookingController {
 
         if (booking.getRoom() != null) {
             response.setRoomId(booking.getRoom().getId());
-            response.setRoomName(booking.getRoom().getDisplayName());
+
+            String roomName = booking.getRoom().getDisplayName();
+            if (roomName == null || roomName.isBlank()) {
+                String blockName = booking.getRoom().getBlockName() != null ? booking.getRoom().getBlockName() : "";
+                String roomNumber = booking.getRoom().getRoomNumber() != null ? booking.getRoom().getRoomNumber() : "Room";
+                roomName = blockName.isBlank() ? roomNumber : blockName + " - " + roomNumber;
+            }
+            response.setRoomName(roomName);
         }
 
         if (booking.getUser() != null) {
@@ -656,15 +684,17 @@ public class BookingController {
         }
         response.setDurationMinutes(durationMinutes);
 
-        // Add these only if your BookingResponse DTO already contains these fields
         response.setCheckedInAt(booking.getCheckedInAt());
         response.setIsPresent(booking.getIsPresent());
         response.setAttendanceMarkedAt(booking.getAttendanceMarkedAt());
         response.setFeedbackSubmitted(booking.getFeedbackSubmitted());
 
+        response.setCheckInDeadline(booking.getCheckInDeadline());
+        response.setAutoCancelledAt(booking.getAutoCancelledAt());
+
         return response;
     }
 
-    private record OffsetDateTimeRange(java.time.OffsetDateTime startAt, java.time.OffsetDateTime endAt) {
+    private record OffsetDateTimeRange(OffsetDateTime startAt, OffsetDateTime endAt) {
     }
 }

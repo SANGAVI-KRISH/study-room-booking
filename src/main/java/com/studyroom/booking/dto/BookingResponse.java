@@ -38,7 +38,13 @@ public class BookingResponse {
     private String approvedByName;
 
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ssXXX")
+    private OffsetDateTime checkInDeadline;
+
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ssXXX")
     private OffsetDateTime checkedInAt;
+
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ssXXX")
+    private OffsetDateTime autoCancelledAt;
 
     private Boolean isPresent;
 
@@ -76,7 +82,9 @@ public class BookingResponse {
             OffsetDateTime bookedAt,
             UUID approvedById,
             String approvedByName,
+            OffsetDateTime checkInDeadline,
             OffsetDateTime checkedInAt,
+            OffsetDateTime autoCancelledAt,
             Boolean isPresent,
             OffsetDateTime attendanceMarkedAt,
             Boolean feedbackSubmitted,
@@ -102,7 +110,9 @@ public class BookingResponse {
         this.bookedAt = bookedAt;
         this.approvedById = approvedById;
         this.approvedByName = approvedByName;
+        this.checkInDeadline = checkInDeadline;
         this.checkedInAt = checkedInAt;
+        this.autoCancelledAt = autoCancelledAt;
         this.isPresent = isPresent;
         this.attendanceMarkedAt = attendanceMarkedAt;
         this.feedbackSubmitted = feedbackSubmitted;
@@ -262,12 +272,28 @@ public class BookingResponse {
         this.approvedByName = approvedByName;
     }
 
+    public OffsetDateTime getCheckInDeadline() {
+        return checkInDeadline;
+    }
+
+    public void setCheckInDeadline(OffsetDateTime checkInDeadline) {
+        this.checkInDeadline = checkInDeadline;
+    }
+
     public OffsetDateTime getCheckedInAt() {
         return checkedInAt;
     }
 
     public void setCheckedInAt(OffsetDateTime checkedInAt) {
         this.checkedInAt = checkedInAt;
+    }
+
+    public OffsetDateTime getAutoCancelledAt() {
+        return autoCancelledAt;
+    }
+
+    public void setAutoCancelledAt(OffsetDateTime autoCancelledAt) {
+        this.autoCancelledAt = autoCancelledAt;
     }
 
     public Boolean getIsPresent() {

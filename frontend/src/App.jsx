@@ -22,6 +22,10 @@ import AdminReports from "./pages/AdminReports";
 import ManageTimeSlots from "./pages/ManageTimeSlots";
 import RoomSlots from "./pages/RoomSlots";
 import AdminFeedback from "./pages/AdminFeedback";
+import WaitlistPage from "./pages/WaitlistPage";
+import Profile from "./pages/Profile";
+import ManageUser from "./pages/ManageUser";
+
 
 const API_BASE_URL = "http://localhost:8080";
 
@@ -56,8 +60,8 @@ function HomePage() {
         <div className="hero-content">
           <h1>Book Study Rooms Easily</h1>
           <p>
-            Find available study rooms, check facilities, and reserve your slot
-            quickly.
+            Find available study rooms, check facilities, reserve your slot
+            quickly, and join waitlist when rooms are full.
           </p>
 
           <div className="hero-buttons">
@@ -84,7 +88,7 @@ function HomePage() {
         <div className="feature-grid">
           <div className="feature-card">
             <h3>Easy Booking</h3>
-            <p>Reserve rooms in seconds with simple booking.</p>
+            <p>Reserve rooms in seconds with a simple booking flow.</p>
           </div>
 
           <div className="feature-card">
@@ -95,6 +99,11 @@ function HomePage() {
           <div className="feature-card">
             <h3>Role Based Access</h3>
             <p>Separate dashboards for Student, Staff, and Admin.</p>
+          </div>
+
+          <div className="feature-card">
+            <h3>Smart Waitlist</h3>
+            <p>Join waitlist for full slots and get notified automatically.</p>
           </div>
         </div>
       </section>
@@ -110,6 +119,8 @@ function LoginPage({ initialMode = "login" }) {
   const [mode, setMode] = useState(initialMode);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordMatchError, setPasswordMatchError] = useState("");
 
   const [formData, setFormData] = useState({
     name: "",
@@ -122,11 +133,13 @@ function LoginPage({ initialMode = "login" }) {
   useEffect(() => {
     setMode(initialMode);
     setMessage("");
+    setConfirmPassword("");
+    setPasswordMatchError("");
   }, [initialMode]);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
-    const role = localStorage.getItem("role");
+    const role = (localStorage.getItem("role") || "").trim().toUpperCase();
 
     if (token && role) {
       if (role === "ADMIN") {
@@ -144,6 +157,16 @@ function LoginPage({ initialMode = "login" }) {
       ...prev,
       [e.target.name]: e.target.value,
     }));
+    
+    // Clear password match error when user types
+    if (e.target.name === "password" || e.target.name === "confirmPassword") {
+      setPasswordMatchError("");
+    }
+  };
+
+  const handleConfirmPasswordChange = (e) => {
+    setConfirmPassword(e.target.value);
+    setPasswordMatchError("");
   };
 
   const clearForm = () => {
@@ -154,6 +177,8 @@ function LoginPage({ initialMode = "login" }) {
       newPassword: "",
       role: "STUDENT",
     });
+    setConfirmPassword("");
+    setPasswordMatchError("");
   };
 
   const switchMode = (newMode) => {
@@ -249,15 +274,25 @@ function LoginPage({ initialMode = "login" }) {
 
     if (loading) return;
 
+    // Validate password match for registration
+    if (mode === "register") {
+      if (formData.password !== confirmPassword) {
+        setPasswordMatchError("Passwords do not match");
+        return;
+      }
+      
+      if (formData.password.length < 6) {
+        setPasswordMatchError("Password must be at least 6 characters long");
+        return;
+      }
+    }
+
     setMessage("");
 
     const { url, payload } = getUrlAndPayload();
 
     try {
       setLoading(true);
-
-      console.log("Submitting to:", url);
-      console.log("Payload:", payload);
 
       const response = await fetch(url, {
         method: "POST",
@@ -276,15 +311,12 @@ function LoginPage({ initialMode = "login" }) {
         data = await response.text();
       }
 
-      console.log("Response status:", response.status);
-      console.log("Response data:", data);
-
       if (response.ok) {
         if (mode === "login") {
           clearStoredAuth();
 
           const token = data?.token ?? data?.jwt ?? "";
-          const role = data?.role ?? data?.user?.role ?? "";
+          const role = (data?.role ?? data?.user?.role ?? "").trim().toUpperCase();
           const email =
             data?.email ??
             data?.user?.email ??
@@ -398,6 +430,7 @@ function LoginPage({ initialMode = "login" }) {
           <p className="subtitle">Smart Study Room Booking System</p>
 
           {message && <div className="message">{message}</div>}
+          {passwordMatchError && <div className="error-message">{passwordMatchError}</div>}
 
           <form onSubmit={handleSubmit}>
             {mode === "register" && (
@@ -427,6 +460,17 @@ function LoginPage({ initialMode = "login" }) {
                 placeholder="Password"
                 value={formData.password}
                 onChange={handleChange}
+                required
+              />
+            )}
+
+            {mode === "register" && (
+              <input
+                type="password"
+                name="confirmPassword"
+                placeholder="Confirm Password"
+                value={confirmPassword}
+                onChange={handleConfirmPasswordChange}
                 required
               />
             )}
@@ -525,7 +569,7 @@ function LoginPage({ initialMode = "login" }) {
 
 function ProtectedRoute({ children, allowedRoles }) {
   const token = localStorage.getItem("token");
-  const role = localStorage.getItem("role");
+  const role = (localStorage.getItem("role") || "").trim().toUpperCase();
 
   if (!token) {
     return <Navigate to="/login" replace />;
@@ -574,8 +618,23 @@ export default function App() {
           element={<LoginPage initialMode="forgot" />}
         />
 
-        <Route path="/manage-time-slots" element={<ManageTimeSlots />} />
-        <Route path="/room-slots" element={<RoomSlots />} />
+        <Route
+          path="/manage-time-slots"
+          element={
+            <ProtectedRoute allowedRoles={["ADMIN"]}>
+              <ManageTimeSlots />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/room-slots"
+          element={
+            <ProtectedRoute allowedRoles={["ADMIN", "STAFF"]}>
+              <RoomSlots />
+            </ProtectedRoute>
+          }
+        />
 
         <Route
           path="/admin"
@@ -598,7 +657,7 @@ export default function App() {
         <Route
           path="/student"
           element={
-            <ProtectedRoute allowedRoles={["STUDENT", "ADMIN"]}>
+            <ProtectedRoute allowedRoles={["STUDENT", "ADMIN", "STAFF"]}>
               <StudentDashboard />
             </ProtectedRoute>
           }
@@ -672,6 +731,34 @@ export default function App() {
           element={
             <ProtectedRoute allowedRoles={["ADMIN", "STAFF", "STUDENT"]}>
               <Notifications />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/waitlist"
+          element={
+            <ProtectedRoute allowedRoles={["ADMIN", "STAFF", "STUDENT"]}>
+              <WaitlistPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute allowedRoles={["ADMIN", "STAFF", "STUDENT"]}>
+              <Profile />
+            </ProtectedRoute>
+          }
+        />
+
+        
+        <Route
+          path="/admin/users"
+          element={
+            <ProtectedRoute allowedRoles={["ADMIN"]}>
+              <ManageUser />
             </ProtectedRoute>
           }
         />

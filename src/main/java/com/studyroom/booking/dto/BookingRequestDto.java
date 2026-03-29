@@ -14,10 +14,10 @@ public class BookingRequestDto {
     @NotNull(message = "User ID is required")
     private UUID userId;
 
-    // Optional for flexible booking flow
+    // Optional for slot-based booking
     private UUID timeSlotId;
 
-    // New: custom booking start and end
+    // Optional for custom time-range booking
     private OffsetDateTime startAt;
     private OffsetDateTime endAt;
 
@@ -44,8 +44,24 @@ public class BookingRequestDto {
         this.timeSlotId = timeSlotId;
         this.startAt = startAt;
         this.endAt = endAt;
-        this.purpose = purpose;
+        this.purpose = purpose != null ? purpose.trim() : null;
         this.attendeeCount = attendeeCount;
+    }
+
+    public boolean hasCustomTimeRange() {
+        return startAt != null || endAt != null;
+    }
+
+    public boolean hasCompleteCustomTimeRange() {
+        return startAt != null && endAt != null;
+    }
+
+    public boolean hasTimeSlotId() {
+        return timeSlotId != null;
+    }
+
+    public boolean isValidTimeRange() {
+        return startAt != null && endAt != null && endAt.isAfter(startAt);
     }
 
     public UUID getRoomId() {
